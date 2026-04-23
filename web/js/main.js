@@ -37,6 +37,11 @@ function weepaAnnouncement(ev) {
         <p class="period">
           ${escapeHtml(formatDate(ev.startDate))} ～ ${escapeHtml(formatDate(ev.endDate))}
         </p>
+        <p class="event-link-wrap">
+          <a class="event-link" href="/score.html?eventId=${encodeURIComponent(ev.weepaEventId)}">
+            スコアを投稿する
+          </a>
+        </p>
       </div>
     </article>
   `;
