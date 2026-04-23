@@ -1,0 +1,33 @@
+# 環境変数（秘密情報）
+.env
+.env.*
+!.env.example
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.pdb
+
+# Node / editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ログ
+*.log
+logs/
+
+# ビルド成果物
+out/
+dist/
+
+# アップロード画像（本番データを誤ってコミットしないように）
+uploads/
