@@ -1,9 +1,17 @@
+renderAdminNav('#admin-nav');
+
 const userInput = document.getElementById('admin-user');
 const passwordInput = document.getElementById('admin-password');
 const loadBtn = document.getElementById('load-btn');
 const resultEl = document.getElementById('admin-result');
 const songsEl = document.getElementById('pending-songs');
 const scoresEl = document.getElementById('pending-scores');
+
+const storedCreds = getAdminCreds();
+if (storedCreds) {
+    userInput.value = storedCreds.user;
+    passwordInput.value = storedCreds.password;
+}
 
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
@@ -132,6 +140,7 @@ async function loadPending() {
             ? scores.map(scoreCard).join('')
             : '<p class="empty">未承認のスコア投稿はありません。</p>';
 
+        setAdminCreds(userInput.value.trim(), passwordInput.value);
         setInfo('未承認一覧を更新しました。', 'ok');
     } catch (err) {
         songsEl.innerHTML = '<p class="error">取得に失敗しました。</p>';

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DB管理: スコア - Team NVN WeePA</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <main class="container">
+        <p><a href="/">← トップへ</a></p>
+        <div id="admin-nav"></div>
+        <h1>DB管理: スコア (weepa_scores)</h1>
+
+        <p id="status" class="result" role="status" aria-live="polite"></p>
+
+        <section class="event-card">
+            <h2>新規作成</h2>
+            <form id="create-form" class="form">
+                <div class="field">
+                    <label for="c-weepaEventId">weepa_event_id <span class="required">*</span></label>
+                    <input type="number" id="c-weepaEventId" name="weepaEventId" required min="1">
+                </div>
+                <div class="field">
+                    <label for="c-xId">x_id <span class="required">*</span></label>
+                    <input type="text" id="c-xId" name="xId" required>
+                </div>
+                <div class="field">
+                    <label for="c-submitId">submit_id (空欄で自動採番)</label>
+                    <input type="number" id="c-submitId" name="submitId" min="1">
+                </div>
+                <div class="field">
+                    <label for="c-submitName">submit_name <span class="required">*</span></label>
+                    <input type="text" id="c-submitName" name="submitName" required>
+                </div>
+                <div class="field">
+                    <label for="c-score">score <span class="required">*</span></label>
+                    <input type="number" id="c-score" name="score" required min="0" max="10000000">
+                </div>
+                <div class="field">
+                    <label for="c-exScore">ex_score</label>
+                    <input type="number" id="c-exScore" name="exScore" min="0">
+                </div>
+                <div class="field">
+                    <label for="c-imagePath">image_path</label>
+                    <input type="text" id="c-imagePath" name="imagePath" placeholder="/uploads/pending/...">
+                </div>
+                <div class="field">
+                    <label for="c-approvalStatus">approval_status</label>
+                    <select id="c-approvalStatus" name="approvalStatus">
+                        <option value="-1">-1 却下</option>
+                        <option value="0" selected>0 未承認</option>
+                        <option value="1">1 承認済み</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="submit">作成</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="ranking-section">
+            <h2>一覧</h2>
+            <div id="list">
+                <p class="loading">読み込み中...</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/js/admin-common.js"></script>
+    <script src="/js/admin-scores.js"></script>
+</body>
+
+</html>
