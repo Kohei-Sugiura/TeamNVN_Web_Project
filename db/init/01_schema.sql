@@ -12,6 +12,8 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ============================================
 -- weepa_songs（楽曲投稿＝選曲提案）
+-- approval_status: -1=却下 / 0=未承認 / 1=承認済み
+-- 負値=終端（却下） / 非負=前進パイプライン。"非却下" は approval_status >= 0 で表現。
 -- ============================================
 CREATE TABLE weepa_songs (
     weepa_song_id   SERIAL PRIMARY KEY,
@@ -40,6 +42,7 @@ CREATE TABLE weepa_events (
 -- weepa_scores（スコア投稿）
 -- submit_id は BEFORE INSERT トリガーで自動採番するため
 -- アプリ側は指定せず NULL で INSERT できる
+-- approval_status: -1=却下 / 0=未承認 / 1=承認済み（ランキング対象）
 -- ============================================
 CREATE TABLE weepa_scores (
     weepa_event_id  INTEGER NOT NULL REFERENCES weepa_events(weepa_event_id),

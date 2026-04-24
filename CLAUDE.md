@@ -56,6 +56,7 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 | 選曲提案は「今週の曲」 | **違う** | 将来の候補プールに積む。UI文言に「今週」「来週」等を入れない |
 | ランキング公開 | **集計完了後のみ** | 開催中イベントにはランキングへの導線を置かない。`/ranking.html` は存在するが直URL経由のみ |
 | 集計完了の判定方法 | **未定** | Step 6 or 後工程で決定（候補: `end_date < NOW()` で自動 / 管理者が `tallied_at` を明示） |
+| `approval_status` の値設計 | **負値=終端（却下）／非負=前進パイプライン** | `-1=却下 / 0=未承認 / 1=承認済み`。「非却下」は `approval_status >= 0` で綺麗に書ける。songs/scores 両テーブル共通 |
 
 ## UI/UX ルール
 

@@ -92,7 +92,7 @@ public class AdminController : ControllerBase
         var affected = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE weepa_songs
-            SET approval_status = 2
+            SET approval_status = -1
             WHERE weepa_song_id = @Id
               AND approval_status = 0
             """,
@@ -251,7 +251,7 @@ public class AdminController : ControllerBase
         var affected = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE weepa_scores
-            SET approval_status = 2
+            SET approval_status = -1
             WHERE weepa_event_id = @EventId
               AND x_id = @XId
               AND submit_id = @SubmitId
