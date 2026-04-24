@@ -17,6 +17,27 @@ public class SongsController : ControllerBase
         _dataSource = dataSource;
     }
 
+    [HttpGet]
+    public async Task<IActionResult> List(CancellationToken ct)
+    {
+        const string sql = """
+            SELECT
+                weepa_song_id AS "weepaSongId",
+                song          AS "song",
+                effect        AS "effect",
+                x_id          AS "xId",
+                submit_name   AS "submitName",
+                submit_date   AS "submitDate"
+            FROM weepa_songs
+            WHERE approval_status >= 0
+            ORDER BY weepa_song_id DESC
+            """;
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var items = await conn.QueryAsync(new CommandDefinition(sql, cancellationToken: ct));
+        return Ok(items);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Submit(
         [FromBody] SongSubmissionRequest request,

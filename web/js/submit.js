@@ -1,8 +1,47 @@
 const form = document.getElementById('submit-form');
 const btn = document.getElementById('submit-btn');
 const resultEl = document.getElementById('result');
+const pastListEl = document.getElementById('past-songs-list');
 
 const fieldKeys = ['song', 'effect', 'xId', 'submitName', 'submitReason'];
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+async function loadPastSongs() {
+  try {
+    const res = await fetch('/api/songs');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const items = await res.json();
+
+    if (!items.length) {
+      pastListEl.innerHTML = '<p class="empty">まだ提案された曲はありません。</p>';
+      return;
+    }
+
+    const rows = items.map((it) => `
+      <tr>
+        <td class="song">${escapeHtml(it.song)}</td>
+        <td class="effect">${escapeHtml(it.effect)}</td>
+        <td class="proposer">${escapeHtml(it.submitName)} (@${escapeHtml(it.xId)})</td>
+      </tr>
+    `).join('');
+
+    pastListEl.innerHTML = `
+      <table class="ranking-table past-songs-table">
+        <thead>
+          <tr><th>楽曲名</th><th>譜面種</th><th>提案者</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  } catch (err) {
+    pastListEl.innerHTML = `<p class="error">一覧の取得に失敗しました: ${escapeHtml(err.message)}</p>`;
+  }
+}
 
 function clearErrors() {
   for (const key of fieldKeys) {
@@ -59,6 +98,7 @@ form.addEventListener('submit', async (ev) => {
       resultEl.textContent = '✓ 投稿を受け付けました。ありがとうございます。';
       resultEl.className = 'result ok';
       form.reset();
+      loadPastSongs();
     } else if (res.status === 400) {
       const data = await res.json().catch(() => ({}));
       mapServerErrors(data.errors);
@@ -76,3 +116,5 @@ form.addEventListener('submit', async (ev) => {
     resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 });
+
+loadPastSongs();
