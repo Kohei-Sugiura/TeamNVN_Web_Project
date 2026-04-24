@@ -12,8 +12,9 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ============================================
 -- weepa_songs（楽曲投稿＝選曲提案）
--- approval_status: -1=却下 / 0=未承認 / 1=承認済み
+-- approval_status: -1=却下 / 0=未承認 / 1=承認済み(未実施) / 2=実施済み（過去イベントで使用済み）
 -- 負値=終端（却下） / 非負=前進パイプライン。"非却下" は approval_status >= 0 で表現。
+-- イベント作成時（手動・auto-weekly 双方）で対象曲を 1→2 に遷移。auto-weekly の抽選は status=1 のみ。
 -- ============================================
 CREATE TABLE weepa_songs (
     weepa_song_id   SERIAL PRIMARY KEY,

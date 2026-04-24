@@ -293,41 +293,52 @@ public class AdminController : ControllerBase
         var endDate = request.EndDate.ToUniversalTime();
 
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
 
         var approvalStatus = await conn.QuerySingleOrDefaultAsync<short?>(
             new CommandDefinition(
-                "SELECT approval_status FROM weepa_songs WHERE weepa_song_id = @Id",
+                "SELECT approval_status FROM weepa_songs WHERE weepa_song_id = @Id FOR UPDATE",
                 new { Id = request.WeepaSongId },
+                transaction: tx,
                 cancellationToken: ct));
 
         if (approvalStatus is null)
         {
+            await tx.RollbackAsync(ct);
             return NotFound(new { message = $"weepa_song_id {request.WeepaSongId} の楽曲が見つかりません" });
         }
 
         if (approvalStatus != 1)
         {
+            await tx.RollbackAsync(ct);
             ModelState.AddModelError(
                 nameof(request.WeepaSongId),
-                "指定された楽曲は承認されていません");
+                "指定された楽曲は承認されていない、もしくは既に実施済みです");
             return ValidationProblem(ModelState);
         }
 
-        const string insertSql = """
+        var eventId = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            """
             INSERT INTO weepa_events (weepa_song_id, start_date, end_date)
             VALUES (@WeepaSongId, @StartDate, @EndDate)
             RETURNING weepa_event_id
-            """;
-
-        var eventId = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
-            insertSql,
+            """,
             new
             {
                 request.WeepaSongId,
                 StartDate = startDate,
                 EndDate = endDate,
             },
+            transaction: tx,
             cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE weepa_songs SET approval_status = 2 WHERE weepa_song_id = @Id",
+            new { Id = request.WeepaSongId },
+            transaction: tx,
+            cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
 
         return CreatedAtAction(
             actionName: "Get",
@@ -392,6 +403,7 @@ public class AdminController : ControllerBase
             WHERE approval_status = 1
             ORDER BY random()
             LIMIT 1
+            FOR UPDATE SKIP LOCKED
             """,
             transaction: tx,
             cancellationToken: ct));
@@ -414,6 +426,12 @@ public class AdminController : ControllerBase
                 StartDate = startDate,
                 EndDate = endDate,
             },
+            transaction: tx,
+            cancellationToken: ct));
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE weepa_songs SET approval_status = 2 WHERE weepa_song_id = @Id",
+            new { Id = weepaSongId.Value },
             transaction: tx,
             cancellationToken: ct));
 
