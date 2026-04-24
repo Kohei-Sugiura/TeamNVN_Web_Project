@@ -108,19 +108,21 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 
 ## Step 6 のスコープ（仕様書準拠 + 将来を見据えた調整）
 
-仕様書の Step 6 は Web 管理画面ベースだが、**将来的に Discord Bot 経由の承認運用に置き換える前提** のため、`admin.html` は簡易で可。
-Discord Bot 実装を意識した API 設計を優先する。
+仕様書の Step 6 は Web 管理画面ベース。**まず `admin.html` だけで承認運用が完結すること** を最優先で仕上げる。
+Discord Bot 連携は将来計画として残すが、HTML 側の運用が安定稼働するのを待って着手する（2026-04-24 決定）。
+ただし API 設計は Discord Bot からも後から叩ける純粋な REST のまま維持し、HTML 専用の仕様は混ぜない。
 
 - 管理者認証: Basic 認証 or Cookie（どちらか相談）
 - エンドポイント:
   - `GET  /api/admin/songs/pending` 未承認の選曲提案一覧
   - `POST /api/admin/songs/{id}/approve` / `reject`
   - `GET  /api/admin/scores/pending` 未承認スコア一覧
-  - `POST /api/admin/scores/{keys}/approve`
-  - `POST /api/admin/scores/{keys}/reject` （**reject 時に修正後スコア/EXスコアを同時受理できる形にしておく**）
+  - `POST /api/admin/scores/{keys}/approve` （**body 任意で `score`/`exScore` を受理 → 渡されれば修正値で承認**）
+  - `POST /api/admin/scores/{keys}/reject` （body 不要、単純に却下）
+- 管理者のスコア修正フロー: 画像と投稿値がズレていれば **「修正して承認」で修正値を渡す** → 承認扱いでランキング対象
 - 承認時: pending 画像を物理削除
 - 却下時: 画像を一定期間保持（将来のバッチ削除）
-- `admin.html`: 未承認リスト + 承認/却下ボタン、最低限のUI
+- `admin.html`: 未承認リスト + 承認/却下ボタン + 却下時のスコア修正UI。実運用できる品質に仕上げる
 
 ## 将来計画（Step 8 以降の構想）
 

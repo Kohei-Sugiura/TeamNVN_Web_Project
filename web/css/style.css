@@ -5,7 +5,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   min-height: 100%;
 }
 
@@ -18,7 +19,7 @@ body {
   background-color: #050514;
   background-image:
     repeating-linear-gradient(135deg, transparent 0 79px, rgba(0, 229, 255, 0.035) 79px 80px),
-    repeating-linear-gradient(45deg,  transparent 0 119px, rgba(255, 61, 138, 0.03) 119px 120px),
+    repeating-linear-gradient(45deg, transparent 0 119px, rgba(255, 61, 138, 0.03) 119px 120px),
     radial-gradient(ellipse at 50% -10%, #1e1044 0%, #0a0a22 45%, #030310 100%);
   background-attachment: fixed;
   min-height: 100vh;
@@ -33,13 +34,16 @@ body {
   width: 10px;
   height: 10px;
 }
+
 ::-webkit-scrollbar-track {
   background: #0a0a1e;
 }
+
 ::-webkit-scrollbar-thumb {
   background: linear-gradient(#00e5ff, #ff3d8a);
   border-radius: 6px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(#66f3ff, #ff70ab);
 }
@@ -48,6 +52,7 @@ a {
   color: #00e5ff;
   text-decoration: none;
 }
+
 a:hover {
   text-decoration: underline;
   text-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
@@ -86,12 +91,12 @@ a:hover {
   font-size: 2.4rem;
   font-weight: 900;
   letter-spacing: 0.14em;
-  background: linear-gradient(90deg, #00e5ff 0%, #bb00ff 50%, #ff3d8a 100%);
+  background: linear-gradient(90deg, #00e5ff 0%, #bb00ff 35%, #ff3d8a 65%, #e60033 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  filter: drop-shadow(0 0 16px rgba(187, 0, 255, 0.35));
+  filter: drop-shadow(0 0 16px rgba(230, 0, 51, 0.4));
 }
 
 .subtitle {
@@ -102,7 +107,7 @@ a:hover {
 }
 
 /* Generic page h1 (submit.html 等、site-header 外の h1) */
-.container > h1 {
+.container>h1 {
   font-size: 1.8rem;
   letter-spacing: 0.08em;
   background: linear-gradient(90deg, #00e5ff, #ff3d8a);
@@ -566,6 +571,59 @@ a:hover {
 }
 
 /* ============================================
+ * Admin
+ * ============================================ */
+.admin-list {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-item {
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(8, 8, 22, 0.55);
+}
+
+.admin-item p {
+  margin: 6px 0;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-actions button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.admin-actions .action-approve {
+  background: linear-gradient(135deg, #00e5ff 0%, #00a8d8 100%);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+}
+
+.admin-actions .action-reject {
+  background: linear-gradient(135deg, #ff3d8a 0%, #bb00ff 100%);
+  box-shadow: 0 0 12px rgba(255, 61, 138, 0.35);
+}
+
+.admin-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ============================================
  * モバイル対応 (〜600px)
  * ============================================ */
 @media (max-width: 600px) {
@@ -583,7 +641,7 @@ a:hover {
     letter-spacing: 0.1em;
   }
 
-  .container > h1 {
+  .container>h1 {
     font-size: 1.4rem;
   }
 
@@ -653,5 +711,9 @@ a:hover {
 
   .result {
     font-size: 0.92rem;
+  }
+
+  .admin-actions button {
+    width: 100%;
   }
 }

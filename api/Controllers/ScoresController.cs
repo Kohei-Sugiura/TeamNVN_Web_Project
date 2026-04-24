@@ -94,6 +94,7 @@ public class ScoresController : ControllerBase
         Directory.CreateDirectory(eventDir);
         var fileName = $"{Guid.NewGuid():N}.{extension}";
         var fullPath = Path.Combine(eventDir, fileName);
+        var publicImagePath = $"/uploads/pending/{eventId}/{fileName}";
 
         await using (var stream = System.IO.File.Create(fullPath))
         {
@@ -103,9 +104,9 @@ public class ScoresController : ControllerBase
         // 5. DB 挿入 (submit_id トリガー衝突時は最大3回リトライ)
         const string insertSql = """
             INSERT INTO weepa_scores
-                (weepa_event_id, x_id, submit_name, score, ex_score)
+                (weepa_event_id, x_id, submit_name, score, ex_score, image_path)
             VALUES
-                (@EventId, @XId, @SubmitName, @Score, @ExScore)
+                (@EventId, @XId, @SubmitName, @Score, @ExScore, @ImagePath)
             RETURNING submit_id
             """;
 
@@ -123,6 +124,7 @@ public class ScoresController : ControllerBase
                         request.SubmitName,
                         request.Score,
                         request.ExScore,
+                        ImagePath = publicImagePath,
                     },
                     cancellationToken: ct));
                 break;

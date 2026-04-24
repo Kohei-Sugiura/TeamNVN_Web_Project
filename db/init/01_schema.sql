@@ -48,6 +48,7 @@ CREATE TABLE weepa_scores (
     submit_name     TEXT NOT NULL,
     score           INTEGER NOT NULL CHECK (score BETWEEN 0 AND 10000000),
     ex_score        INTEGER,
+    image_path      TEXT NOT NULL,
     submit_date     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     approval_status SMALLINT NOT NULL DEFAULT 0,
 

@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>楽曲投稿 - WeePA</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
+
 <body>
   <main class="container">
     <p><a href="/">← トップへ</a></p>
@@ -17,9 +19,8 @@
     <form id="submit-form" class="form" novalidate>
       <div class="field">
         <label for="xId">X (Twitter) ID <span class="required">*</span></label>
-        <input type="text" id="xId" name="xId" required maxlength="100"
-               placeholder="@abc_player または https://x.com/abc_player">
-        <p class="hint">@なし・URL・全角@のいずれでも可（半角英数字と _、15文字以内）</p>
+        <input type="text" id="xId" name="xId" required maxlength="100" placeholder="@abc_player">
+        <p class="hint">例: @abc_player</p>
         <p class="error" data-for="xId"></p>
       </div>
 
@@ -67,4 +68,5 @@
 
   <script src="/js/submit.js"></script>
 </body>
+
 </html>
