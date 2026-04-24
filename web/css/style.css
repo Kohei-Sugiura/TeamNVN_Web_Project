@@ -623,6 +623,64 @@ a:hover {
   cursor: not-allowed;
 }
 
+.admin-nav {
+  margin: 10px 0 18px;
+  font-size: 0.92rem;
+}
+
+.admin-nav .sep {
+  color: #505070;
+  margin: 0 6px;
+}
+
+.db-table {
+  font-size: 0.82rem;
+}
+
+.db-table td.actions {
+  white-space: nowrap;
+}
+
+.db-table input[type="text"],
+.db-table input:not([type]),
+.db-table input[type="number"],
+.db-table input[type="datetime-local"],
+.db-table select {
+  padding: 4px 6px;
+  font-size: 0.85rem;
+  min-width: 60px;
+}
+
+.db-table .action-edit,
+.db-table .action-save,
+.db-table .action-cancel,
+.db-table .action-delete {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  margin-right: 4px;
+}
+
+.db-table .action-edit,
+.db-table .action-save {
+  background: linear-gradient(135deg, #00e5ff 0%, #00a8d8 100%);
+}
+
+.db-table .action-cancel {
+  background: #505070;
+}
+
+.db-table .action-delete {
+  background: linear-gradient(135deg, #ff3d8a 0%, #bb00ff 100%);
+}
+
+.db-table tr.editing {
+  background: rgba(0, 229, 255, 0.06);
+}
+
 /* ============================================
  * モバイル対応 (〜600px)
  * ============================================ */
