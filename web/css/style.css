@@ -335,31 +335,31 @@ span.effect {
 }
 
 /* エフェクト別の配色（SDVX 本家準拠を意識） */
-.effect.effect-nov {
+span.effect.effect-nov {
   color: #3a4fd0;
   background: rgba(58, 79, 208, 0.2);
   border-color: rgba(58, 79, 208, 0.75);
   text-shadow: 0 0 4px rgba(58, 79, 208, 0.85);
 }
-.effect.effect-adv {
+span.effect.effect-adv {
   color: #ffce00;
   background: rgba(255, 206, 0, 0.16);
   border-color: rgba(255, 206, 0, 0.65);
   text-shadow: 0 0 4px rgba(255, 206, 0, 0.7);
 }
-.effect.effect-exh {
+span.effect.effect-exh {
   color: #ff3850;
   background: rgba(255, 56, 80, 0.18);
   border-color: rgba(255, 56, 80, 0.65);
   text-shadow: 0 0 4px rgba(255, 56, 80, 0.7);
 }
-.effect.effect-mxm {
+span.effect.effect-mxm {
   color: #e6e6e6;
   background: linear-gradient(135deg, rgba(230, 230, 230, 0.22) 0%, rgba(160, 160, 160, 0.18) 100%);
   border-color: rgba(220, 220, 220, 0.7);
   text-shadow: 0 0 4px rgba(220, 220, 220, 0.7);
 }
-.effect.effect-inf {
+span.effect.effect-inf {
   color: #fff;
   background: linear-gradient(135deg,
     rgba(255, 50, 170, 0.65) 0%,
@@ -370,31 +370,31 @@ span.effect {
   border-color: rgba(255, 80, 180, 0.8);
   text-shadow: 0 0 4px rgba(255, 70, 180, 0.85);
 }
-.effect.effect-grv {
+span.effect.effect-grv {
   color: #ff7c1a;
   background: rgba(255, 124, 26, 0.16);
   border-color: rgba(255, 124, 26, 0.65);
   text-shadow: 0 0 4px rgba(255, 124, 26, 0.7);
 }
-.effect.effect-hvn {
+span.effect.effect-hvn {
   color: #7ed1f0;
   background: rgba(126, 209, 240, 0.2);
   border-color: rgba(126, 209, 240, 0.75);
   text-shadow: 0 0 4px rgba(126, 209, 240, 0.8);
 }
-.effect.effect-vvd {
+span.effect.effect-vvd {
   color: #ff52a8;
   background: rgba(255, 82, 168, 0.18);
   border-color: rgba(255, 82, 168, 0.65);
   text-shadow: 0 0 4px rgba(255, 82, 168, 0.7);
 }
-.effect.effect-xcd {
+span.effect.effect-xcd {
   color: #2ea1ff;
   background: rgba(46, 161, 255, 0.16);
   border-color: rgba(46, 161, 255, 0.65);
   text-shadow: 0 0 4px rgba(46, 161, 255, 0.7);
 }
-.effect.effect-ult {
+span.effect.effect-ult {
   color: #fff8d6;
   background:
     linear-gradient(135deg,
