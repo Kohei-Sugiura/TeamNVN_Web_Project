@@ -805,6 +805,11 @@ span.effect.effect-ult {
   box-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
 }
 
+.admin-actions .action-approve-edit {
+  background: linear-gradient(135deg, #ff9933 0%, #f76d3c 100%);
+  box-shadow: 0 0 12px rgba(255, 153, 51, 0.35);
+}
+
 .admin-actions .action-reject {
   background: linear-gradient(135deg, #ff3d8a 0%, #bb00ff 100%);
   box-shadow: 0 0 12px rgba(255, 61, 138, 0.35);
