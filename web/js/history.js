@@ -53,7 +53,7 @@ function heldRow(s, idx, now) {
         <td>${idx + 1}</td>
         <td>${escapeHtml(s.song)}</td>
         <td><span class="effect effect-${(s.effect || '').toLowerCase()}">${escapeHtml(s.effect)}</span></td>
-        <td>${escapeHtml(s.submitName)} (@${escapeHtml(s.xId)})</td>
+        <td>${escapeHtml(s.submitName)}</td>
         <td>${escapeHtml(period)}</td>
         <td>${statusCell(s, now)}</td>
       </tr>
@@ -65,7 +65,7 @@ function unheldRow(s) {
       <tr>
         <td>${escapeHtml(s.song)}</td>
         <td><span class="effect effect-${(s.effect || '').toLowerCase()}">${escapeHtml(s.effect)}</span></td>
-        <td>${escapeHtml(s.submitName)} (@${escapeHtml(s.xId)})</td>
+        <td>${escapeHtml(s.submitName)}</td>
         <td>${escapeHtml(formatYmd(s.submitDate))}</td>
       </tr>
     `;
