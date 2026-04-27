@@ -377,10 +377,10 @@ span.effect {
   text-shadow: 0 0 4px rgba(255, 124, 26, 0.7);
 }
 .effect.effect-hvn {
-  color: #c2ecff;
-  background: rgba(194, 236, 255, 0.18);
-  border-color: rgba(194, 236, 255, 0.7);
-  text-shadow: 0 0 4px rgba(194, 236, 255, 0.75);
+  color: #7ed1f0;
+  background: rgba(126, 209, 240, 0.2);
+  border-color: rgba(126, 209, 240, 0.75);
+  text-shadow: 0 0 4px rgba(126, 209, 240, 0.8);
 }
 .effect.effect-vvd {
   color: #ff52a8;
