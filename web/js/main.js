@@ -51,63 +51,35 @@ function renderError(message) {
   bodyEl.innerHTML = `<p class="error">${escapeHtml(message)}</p>`;
 }
 
-function renderLatest(ev, ranking) {
-  const top = ranking.slice(0, 3);
-  const rows = top.map((e) => `
-    <tr>
-      <td>${e.rank}</td>
-      <td class="name">${escapeHtml(e.submitName)}</td>
-      <td class="score">${Number(e.score).toLocaleString('en-US')}</td>
-      <td class="ex">${e.exScore != null ? Number(e.exScore).toLocaleString('en-US') : '-'}</td>
-    </tr>
-  `).join('');
-
+function renderLatest(ev) {
   const detailUrl = `/ranking.html?eventId=${encodeURIComponent(ev.weepaEventId)}`;
-
   latestEl.innerHTML = `
     <div class="event-title">
       <span class="song">${escapeHtml(ev.song)}</span>
       <span class="effect">${escapeHtml(ev.effect)}</span>
     </div>
     <p class="period">${escapeHtml(formatYmd(ev.startDate))}~${escapeHtml(formatYmd(ev.endDate))}</p>
-    <table class="ranking-table mini">
-      <thead><tr><th>#</th><th>名前</th><th>スコア</th><th>EX</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
     <p class="event-link-wrap"><a class="event-link" href="${detailUrl}">ランキング詳細を見る</a></p>
   `;
   latestSection.hidden = false;
 }
 
-async function loadLatestFinished() {
-  try {
-    const pastRes = await fetch('/api/events/past');
-    if (!pastRes.ok) return;
-    const past = await pastRes.json();
-    if (!past.length) return;
-    const latest = past[0];
-
-    const rankRes = await fetch(`/api/events/${encodeURIComponent(latest.weepaEventId)}/ranking`);
-    if (!rankRes.ok) return;
-    const ranking = await rankRes.json();
-    if (!ranking.length) return;
-
-    renderLatest(latest, ranking);
-  } catch {
-    // nice-to-have なので失敗時はサイレント
-  }
-}
-
 (async () => {
+  // current と past を並列でキック
+  const currentPromise = fetch('/api/events/current')
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
+  const pastPromise = fetch('/api/events/past')
+    .then((r) => (r.ok ? r.json() : []))
+    .catch(() => []);
+
   try {
-    const res = await fetch('/api/events/current');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { event: ev } = await res.json();
+    const { event: ev } = await currentPromise;
     if (ev) renderActive(ev);
     else renderInactive();
   } catch (err) {
     renderError(err.message);
   }
 
-  loadLatestFinished();
+  const past = await pastPromise;
+  if (past.length) renderLatest(past[0]);
 })();
