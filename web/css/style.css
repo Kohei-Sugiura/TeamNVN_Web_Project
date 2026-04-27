@@ -738,6 +738,7 @@ span.effect.effect-ult {
 
 .ranking-table .status-cell {
   text-align: center;
+  white-space: nowrap;
 }
 
 .status-active {
