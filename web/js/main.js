@@ -1,4 +1,5 @@
-const announcementList = document.getElementById('announcement-list');
+const statusEl = document.getElementById('weepa-status');
+const bodyEl = document.getElementById('weepa-current');
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
@@ -14,52 +15,42 @@ function formatDate(iso) {
   });
 }
 
-function renderAnnouncements(items) {
-  if (items.length === 0) {
-    announcementList.innerHTML = '<p class="empty">現在、開催中のイベントはありません。</p>';
-    return;
-  }
-  announcementList.innerHTML = items.join('');
-}
-
-function weepaAnnouncement(ev) {
-  return `
-    <article class="announcement">
-      <header class="announcement-head">
-        <span class="badge">WeePA</span>
-        <span class="announcement-title">現在開催中</span>
-      </header>
-      <div class="announcement-body">
-        <div class="event-title">
-          <span class="song">${escapeHtml(ev.song)}</span>
-          <span class="effect">${escapeHtml(ev.effect)}</span>
-        </div>
-        <p class="period">
-          ${escapeHtml(formatDate(ev.startDate))} ～ ${escapeHtml(formatDate(ev.endDate))}
-        </p>
-        <p class="event-link-wrap">
-          <a class="event-link" href="/score.html?eventId=${encodeURIComponent(ev.weepaEventId)}">
-            スコアを投稿する
-          </a>
-        </p>
-      </div>
-    </article>
+function renderActive(ev) {
+  statusEl.textContent = '現在開催中';
+  bodyEl.innerHTML = `
+    <div class="event-title">
+      <span class="song">${escapeHtml(ev.song)}</span>
+      <span class="effect">${escapeHtml(ev.effect)}</span>
+    </div>
+    <p class="period">
+      ${escapeHtml(formatDate(ev.startDate))} ～ ${escapeHtml(formatDate(ev.endDate))}
+    </p>
+    <p class="event-link-wrap">
+      <a class="event-link" href="/score.html?eventId=${encodeURIComponent(ev.weepaEventId)}">
+        スコアを投稿する
+      </a>
+    </p>
   `;
 }
 
+function renderInactive() {
+  statusEl.textContent = '調整中';
+  bodyEl.innerHTML = '<p>次回の開催準備中です。</p>';
+}
+
+function renderError(message) {
+  statusEl.textContent = '取得失敗';
+  bodyEl.innerHTML = `<p class="error">${escapeHtml(message)}</p>`;
+}
+
 (async () => {
-  const items = [];
   try {
     const res = await fetch('/api/events/current');
-    if (res.ok) {
-      const { event: ev } = await res.json();
-      if (ev) items.push(weepaAnnouncement(ev));
-    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { event: ev } = await res.json();
+    if (ev) renderActive(ev);
+    else renderInactive();
   } catch (err) {
-    announcementList.innerHTML =
-      `<p class="error">お知らせの取得に失敗しました: ${escapeHtml(err.message)}</p>`;
-    return;
+    renderError(err.message);
   }
-
-  renderAnnouncements(items);
 })();

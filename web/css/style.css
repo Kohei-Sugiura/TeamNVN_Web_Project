@@ -134,10 +134,23 @@ a:hover {
 }
 
 /* ============================================
- * Announcement
+ * WeePA section / Announcement
  * ============================================ */
+.weepa-section,
 .announcements {
   margin-bottom: 28px;
+}
+
+.weepa-links {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+}
+
+.weepa-links .sep {
+  color: #505070;
+  margin: 0 12px;
 }
 
 .announcement {
