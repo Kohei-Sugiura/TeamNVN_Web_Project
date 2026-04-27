@@ -8,22 +8,35 @@ function escapeHtml(s) {
     }[c]));
 }
 
-function formatDateOnly(iso) {
+function formatYmd(iso) {
     if (!iso) return '';
     const d = new Date(iso);
-    return d.toLocaleDateString('ja-JP', {
-        year: 'numeric', month: '2-digit', day: '2-digit',
-    });
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}/${m}/${day}`;
+}
+
+function formatPeriod(startIso, endIso) {
+    const s = formatYmd(startIso);
+    const e = formatYmd(endIso);
+    if (!s && !e) return '';
+    return `${s}~${e}`;
 }
 
 function heldRow(s, idx) {
+    const period = formatPeriod(s.eventStartDate, s.eventEndDate);
+    const isFinished = s.eventEndDate && new Date(s.eventEndDate) < new Date();
+    const songCell = isFinished && s.weepaEventId
+        ? `<a href="/ranking.html?eventId=${encodeURIComponent(s.weepaEventId)}">${escapeHtml(s.song)}</a>`
+        : escapeHtml(s.song);
     return `
       <tr>
-        <td class="ex">${idx + 1}</td>
-        <td class="name">${escapeHtml(s.song)}</td>
-        <td class="effect">${escapeHtml(s.effect)}</td>
+        <td>${idx + 1}</td>
+        <td>${songCell}</td>
+        <td>${escapeHtml(s.effect)}</td>
         <td>${escapeHtml(s.submitName)} (@${escapeHtml(s.xId)})</td>
-        <td class="ex">${escapeHtml(formatDateOnly(s.eventStartDate))}</td>
+        <td>${escapeHtml(period)}</td>
       </tr>
     `;
 }
@@ -31,10 +44,10 @@ function heldRow(s, idx) {
 function unheldRow(s) {
     return `
       <tr>
-        <td class="name">${escapeHtml(s.song)}</td>
-        <td class="effect">${escapeHtml(s.effect)}</td>
+        <td>${escapeHtml(s.song)}</td>
+        <td>${escapeHtml(s.effect)}</td>
         <td>${escapeHtml(s.submitName)} (@${escapeHtml(s.xId)})</td>
-        <td class="ex">${escapeHtml(formatDateOnly(s.submitDate))}</td>
+        <td>${escapeHtml(formatYmd(s.submitDate))}</td>
       </tr>
     `;
 }
@@ -46,7 +59,7 @@ function renderHeld(items) {
     }
     const rows = items.map(heldRow).join('');
     heldEl.innerHTML = `
-      <table class="ranking-table">
+      <table class="ranking-table history-table">
         <thead>
           <tr><th>#</th><th>楽曲</th><th>譜面種</th><th>提案者</th><th>開催日</th></tr>
         </thead>
@@ -62,7 +75,7 @@ function renderUnheld(items) {
     }
     const rows = items.map(unheldRow).join('');
     unheldEl.innerHTML = `
-      <table class="ranking-table">
+      <table class="ranking-table history-table">
         <thead>
           <tr><th>楽曲</th><th>譜面種</th><th>提案者</th><th>提案日</th></tr>
         </thead>

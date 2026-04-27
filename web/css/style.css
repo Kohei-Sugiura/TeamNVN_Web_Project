@@ -570,6 +570,14 @@ a:hover {
   color: #9090b0;
 }
 
+/* 履歴テーブルは1位ゴールドハイライトを無効化（ランキングではないため） */
+.history-table tbody tr:first-child td,
+.history-table tbody tr:first-child .name {
+  color: #eaeaf0;
+  text-shadow: none;
+  font-weight: normal;
+}
+
 /* ============================================
  * Admin
  * ============================================ */
