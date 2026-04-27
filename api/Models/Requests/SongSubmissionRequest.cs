@@ -24,4 +24,7 @@ public sealed class SongSubmissionRequest
 
     [StringLength(500, ErrorMessage = "選曲理由は500文字以内で入力してください")]
     public string? SubmitReason { get; set; }
+
+    // ハニーポット: 人間の目には触れない隠しフィールド。値が入っていれば bot 投稿。
+    public string? Website { get; set; }
 }

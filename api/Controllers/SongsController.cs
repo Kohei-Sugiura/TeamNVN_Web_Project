@@ -54,6 +54,13 @@ public class SongsController : ControllerBase
         [FromBody] SongSubmissionRequest request,
         CancellationToken ct)
     {
+        // ハニーポット: 人間UIには出ない隠しフィールドが埋まっていれば bot とみなす
+        // 成功風レスポンスを返してフォーム挙動を擬装しつつ、DB には保存しない
+        if (!string.IsNullOrEmpty(request.Website))
+        {
+            return Ok(new { weepaSongId = 0 });
+        }
+
         var normalizedXId = XIdNormalizer.Normalize(request.XId);
         if (!XIdNormalizer.IsValid(normalizedXId))
         {

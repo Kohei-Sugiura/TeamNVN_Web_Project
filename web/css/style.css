@@ -237,6 +237,18 @@ a:hover {
   margin-top: 14px;
 }
 
+/* ハニーポット: 人間UIから完全に隠す（CSS非表示 + 画面外配置 + tabキーで届かない） */
+.honeypot {
+  position: absolute !important;
+  left: -9999px !important;
+  top: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
 .weepa-status-body .hint {
   margin: 8px 0 0;
   color: #9090b0;

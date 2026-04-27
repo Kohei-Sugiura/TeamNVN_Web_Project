@@ -41,6 +41,7 @@ form.addEventListener('submit', async (ev) => {
     xId: form.xId.value.trim(),
     submitName: form.submitName.value.trim(),
     submitReason: form.submitReason.value.trim() || null,
+    website: form.website.value,
   };
 
   btn.disabled = true;
