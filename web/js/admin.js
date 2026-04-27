@@ -21,7 +21,7 @@ function songCard(item) {
 
     return `
     <article class="admin-item">
-      <p><strong>${escapeHtml(item.song)}</strong> <span class="effect">${escapeHtml(item.effect)}</span></p>
+      <p><strong>${escapeHtml(item.song)}</strong> <span class="effect effect-${(item.effect || '').toLowerCase()}">${escapeHtml(item.effect)}</span></p>
       <p>提案者: ${escapeHtml(item.submitName)} (@${escapeHtml(item.xId)})</p>
       ${reason}
       <p class="period">投稿日時: ${escapeHtml(formatDate(item.submitDate))}</p>
@@ -42,7 +42,7 @@ function scoreCard(item) {
 
     return `
     <article class="admin-item" data-key="${key}">
-      <p><strong>${escapeHtml(item.song)}</strong> <span class="effect">${escapeHtml(item.effect)}</span></p>
+      <p><strong>${escapeHtml(item.song)}</strong> <span class="effect effect-${(item.effect || '').toLowerCase()}">${escapeHtml(item.effect)}</span></p>
       <p>event=${item.weepaEventId} / submit=${item.submitId} / @${escapeHtml(item.xId)}</p>
       <p>投稿者: ${escapeHtml(item.submitName)}</p>
       <p>スコア: <strong>${Number(item.score).toLocaleString('ja-JP')}</strong> / EX: ${item.exScore == null ? '-' : Number(item.exScore).toLocaleString('ja-JP')}</p>

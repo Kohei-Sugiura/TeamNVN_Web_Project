@@ -42,7 +42,7 @@ function activeCard(ev) {
       <div class="weepa-status-body">
         <div class="event-title">
           <span class="song">${escapeHtml(ev.song)}</span>
-          <span class="effect">${escapeHtml(ev.effect)}</span>
+          <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
         </div>
         <p class="period">開催期間: ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
         <p class="event-link-wrap"><a class="event-link" href="${url}">スコアを投稿する</a></p>
@@ -60,7 +60,7 @@ function recentEntry(ev, now) {
     <div class="recent-event">
       <div class="event-title">
         <span class="song">${escapeHtml(ev.song)}</span>
-        <span class="effect">${escapeHtml(ev.effect)}</span>
+        <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
       </div>
       <p class="period">開催期間: ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
       <p class="event-link-wrap">${action}</p>

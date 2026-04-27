@@ -35,7 +35,7 @@ function heldRow(s, idx) {
       <tr${trAttrs}>
         <td>${idx + 1}</td>
         <td>${escapeHtml(s.song)}</td>
-        <td>${escapeHtml(s.effect)}</td>
+        <td><span class="effect effect-${(s.effect || '').toLowerCase()}">${escapeHtml(s.effect)}</span></td>
         <td>${escapeHtml(s.submitName)} (@${escapeHtml(s.xId)})</td>
         <td>${escapeHtml(period)}</td>
       </tr>
@@ -46,7 +46,7 @@ function unheldRow(s) {
     return `
       <tr>
         <td>${escapeHtml(s.song)}</td>
-        <td>${escapeHtml(s.effect)}</td>
+        <td><span class="effect effect-${(s.effect || '').toLowerCase()}">${escapeHtml(s.effect)}</span></td>
         <td>${escapeHtml(s.submitName)} (@${escapeHtml(s.xId)})</td>
         <td>${escapeHtml(formatYmd(s.submitDate))}</td>
       </tr>

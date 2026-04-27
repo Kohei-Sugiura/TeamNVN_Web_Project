@@ -15,7 +15,7 @@ function rowHtml(s) {
       <tr data-id="${s.weepaSongId}">
         <td>${s.weepaSongId}</td>
         <td>${escapeHtml(s.song)}</td>
-        <td>${escapeHtml(s.effect)}</td>
+        <td><span class="effect effect-${(s.effect || '').toLowerCase()}">${escapeHtml(s.effect)}</span></td>
         <td>${escapeHtml(s.xId)}</td>
         <td>${escapeHtml(s.submitName)}</td>
         <td>${escapeHtml(s.submitReason ?? '')}</td>

@@ -317,7 +317,7 @@ a:hover {
   letter-spacing: 0.02em;
 }
 
-.event-title .effect {
+span.effect {
   display: inline-block;
   padding: 3px 12px;
   font-size: 0.8rem;
@@ -328,6 +328,69 @@ a:hover {
   border-radius: 999px;
   letter-spacing: 0.08em;
   text-shadow: 0 0 4px rgba(0, 229, 255, 0.6);
+  white-space: nowrap;
+}
+
+/* エフェクト別の配色（NOV/ADV/EXH/MXM/INF/GRV/HVN/VVD/XCD/ULT） */
+.effect.effect-nov {
+  color: #4fa3ff;
+  background: rgba(33, 150, 243, 0.15);
+  border-color: rgba(79, 163, 255, 0.6);
+  text-shadow: 0 0 4px rgba(79, 163, 255, 0.7);
+}
+.effect.effect-adv {
+  color: #ffd54f;
+  background: rgba(255, 213, 79, 0.15);
+  border-color: rgba(255, 213, 79, 0.6);
+  text-shadow: 0 0 4px rgba(255, 213, 79, 0.7);
+}
+.effect.effect-exh {
+  color: #ff6b6b;
+  background: rgba(244, 67, 54, 0.18);
+  border-color: rgba(255, 107, 107, 0.65);
+  text-shadow: 0 0 4px rgba(255, 107, 107, 0.7);
+}
+.effect.effect-mxm {
+  color: #d97aff;
+  background: rgba(169, 0, 211, 0.15);
+  border-color: rgba(217, 122, 255, 0.6);
+  text-shadow: 0 0 4px rgba(217, 122, 255, 0.7);
+}
+.effect.effect-inf {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(106, 17, 203, 0.5) 0%, rgba(255, 0, 255, 0.4) 50%, rgba(0, 200, 255, 0.4) 100%);
+  border-color: rgba(200, 100, 255, 0.7);
+  text-shadow: 0 0 4px rgba(255, 100, 255, 0.7);
+}
+.effect.effect-grv {
+  color: #ff9466;
+  background: rgba(255, 102, 0, 0.15);
+  border-color: rgba(255, 148, 102, 0.6);
+  text-shadow: 0 0 4px rgba(255, 148, 102, 0.7);
+}
+.effect.effect-hvn {
+  color: #66e0ff;
+  background: rgba(0, 188, 212, 0.15);
+  border-color: rgba(102, 224, 255, 0.6);
+  text-shadow: 0 0 4px rgba(102, 224, 255, 0.7);
+}
+.effect.effect-vvd {
+  color: #f06ad6;
+  background: rgba(200, 80, 192, 0.18);
+  border-color: rgba(240, 106, 214, 0.6);
+  text-shadow: 0 0 4px rgba(240, 106, 214, 0.7);
+}
+.effect.effect-xcd {
+  color: #5ac4f5;
+  background: rgba(33, 150, 212, 0.15);
+  border-color: rgba(90, 196, 245, 0.6);
+  text-shadow: 0 0 4px rgba(90, 196, 245, 0.7);
+}
+.effect.effect-ult {
+  color: #ffd700;
+  background: rgba(255, 215, 0, 0.15);
+  border-color: rgba(255, 215, 0, 0.7);
+  text-shadow: 0 0 4px rgba(255, 215, 0, 0.7);
 }
 
 .event-display .period {

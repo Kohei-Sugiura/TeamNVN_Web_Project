@@ -41,7 +41,7 @@ function renderEventHeader(ev) {
   eventDisplay.innerHTML = `
     <div class="event-title">
       <span class="song">${escapeHtml(ev.song)}</span>
-      <span class="effect">${escapeHtml(ev.effect)}</span>
+      <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
     </div>
     <p class="period">
       開催期間: ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}
@@ -90,7 +90,7 @@ function renderPastList(events) {
   const rows = events.map((ev) => `
     <tr>
       <td class="name"><a href="/ranking.html?eventId=${encodeURIComponent(ev.weepaEventId)}">${escapeHtml(ev.song)}</a></td>
-      <td class="effect">${escapeHtml(ev.effect)}</td>
+      <td><span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span></td>
       <td class="ex">${escapeHtml(formatDateOnly(ev.endDate))}</td>
     </tr>
   `).join('');

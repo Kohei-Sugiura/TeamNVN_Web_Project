@@ -50,7 +50,7 @@ function renderEventHeader(ev) {
   eventDisplay.innerHTML = `
     <div class="event-title">
       <span class="song">${escapeHtml(ev.song)}</span>
-      <span class="effect">${escapeHtml(ev.effect)}</span>
+      <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
     </div>
     <p class="period">
       ${escapeHtml(formatDate(ev.startDate))} ～ ${escapeHtml(formatDate(ev.endDate))}
