@@ -30,6 +30,12 @@ function formatDateOnly(iso) {
   });
 }
 
+function formatYmd(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function renderEventHeader(ev) {
   eventSection.hidden = false;
   eventDisplay.innerHTML = `
@@ -38,7 +44,7 @@ function renderEventHeader(ev) {
       <span class="effect">${escapeHtml(ev.effect)}</span>
     </div>
     <p class="period">
-      ${escapeHtml(formatDate(ev.startDate))} ～ ${escapeHtml(formatDate(ev.endDate))}
+      開催期間: ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}
     </p>
   `;
 }

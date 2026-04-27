@@ -44,7 +44,7 @@ function activeCard(ev) {
           <span class="song">${escapeHtml(ev.song)}</span>
           <span class="effect">${escapeHtml(ev.effect)}</span>
         </div>
-        <p class="period">${escapeHtml(formatDateTime(ev.startDate))} ～ ${escapeHtml(formatDateTime(ev.endDate))}</p>
+        <p class="period">開催期間: ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
         <p class="event-link-wrap"><a class="event-link" href="${url}">スコアを投稿する</a></p>
       </div>
     </section>
@@ -62,7 +62,7 @@ function recentEntry(ev, now) {
         <span class="song">${escapeHtml(ev.song)}</span>
         <span class="effect">${escapeHtml(ev.effect)}</span>
       </div>
-      <p class="period">${escapeHtml(formatYmd(ev.startDate))}~${escapeHtml(formatYmd(ev.endDate))}</p>
+      <p class="period">開催期間: ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
       <p class="event-link-wrap">${action}</p>
     </div>
   `;
