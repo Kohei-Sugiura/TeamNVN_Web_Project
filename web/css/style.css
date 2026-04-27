@@ -183,8 +183,9 @@ a:hover {
 }
 
 .announcement-head .announcement-title {
-  font-size: 0.85rem;
-  color: #c0c0e0;
+  font-size: 1.15rem;
+  font-weight: bold;
+  color: #eaeaf0;
   letter-spacing: 0.1em;
 }
 
