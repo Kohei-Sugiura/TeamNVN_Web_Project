@@ -22,15 +22,18 @@ public class SongsController : ControllerBase
     {
         const string sql = """
             SELECT
-                weepa_song_id AS "weepaSongId",
-                song          AS "song",
-                effect        AS "effect",
-                x_id          AS "xId",
-                submit_name   AS "submitName",
-                submit_date   AS "submitDate"
-            FROM weepa_songs
-            WHERE approval_status >= 0
-            ORDER BY weepa_song_id DESC
+                s.weepa_song_id   AS "weepaSongId",
+                s.song            AS "song",
+                s.effect          AS "effect",
+                s.x_id            AS "xId",
+                s.submit_name     AS "submitName",
+                s.submit_date     AS "submitDate",
+                s.approval_status AS "approvalStatus",
+                (SELECT MIN(e.start_date) FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id) AS "eventStartDate",
+                (SELECT MIN(e.end_date)   FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id) AS "eventEndDate"
+            FROM weepa_songs s
+            WHERE s.approval_status >= 0
+            ORDER BY s.weepa_song_id DESC
             """;
 
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
