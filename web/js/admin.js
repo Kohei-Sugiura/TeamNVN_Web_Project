@@ -1,23 +1,10 @@
+ensureLoggedIn();
 renderAdminNav('#admin-nav');
 
-const userInput = document.getElementById('admin-user');
-const passwordInput = document.getElementById('admin-password');
 const loadBtn = document.getElementById('load-btn');
 const resultEl = document.getElementById('admin-result');
 const songsEl = document.getElementById('pending-songs');
 const scoresEl = document.getElementById('pending-scores');
-
-const storedCreds = getAdminCreds();
-if (storedCreds) {
-    userInput.value = storedCreds.user;
-    passwordInput.value = storedCreds.password;
-}
-
-function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[c]));
-}
 
 function formatDate(iso) {
     const d = new Date(iso);
@@ -25,48 +12,6 @@ function formatDate(iso) {
         year: 'numeric', month: '2-digit', day: '2-digit',
         hour: '2-digit', minute: '2-digit',
     });
-}
-
-function encodeBasicAuth(user, password) {
-    return btoa(unescape(encodeURIComponent(`${user}:${password}`)));
-}
-
-function getAuthHeader() {
-    const user = userInput.value.trim();
-    const password = passwordInput.value;
-    if (!user || !password) {
-        throw new Error('ユーザー名とパスワードを入力してください。');
-    }
-    return `Basic ${encodeBasicAuth(user, password)}`;
-}
-
-async function callAdminApi(path, options = {}) {
-    const auth = getAuthHeader();
-    const res = await fetch(path, {
-        ...options,
-        headers: {
-            'Authorization': auth,
-            'Content-Type': 'application/json',
-            ...(options.headers || {}),
-        },
-    });
-
-    if (!res.ok) {
-        let message = `HTTP ${res.status}`;
-        try {
-            const body = await res.json();
-            if (body?.message) message = body.message;
-        } catch {
-            // noop
-        }
-        if (res.status === 401) {
-            throw new Error('認証に失敗しました。ユーザー名またはパスワードを確認してください。');
-        }
-        throw new Error(message);
-    }
-
-    if (res.status === 204) return null;
-    return res.json().catch(() => null);
 }
 
 function songCard(item) {
@@ -96,7 +41,7 @@ function scoreCard(item) {
     const key = `${item.weepaEventId}:${item.xId}:${item.submitId}`;
 
     return `
-    <article class="admin-item" data-key="${escapeHtml(key)}">
+    <article class="admin-item" data-key="${key}">
       <p><strong>${escapeHtml(item.song)}</strong> <span class="effect">${escapeHtml(item.effect)}</span></p>
       <p>event=${item.weepaEventId} / submit=${item.submitId} / @${escapeHtml(item.xId)}</p>
       <p>投稿者: ${escapeHtml(item.submitName)}</p>
@@ -128,8 +73,8 @@ async function loadPending() {
 
     try {
         const [songs, scores] = await Promise.all([
-            callAdminApi('/api/admin/songs/pending'),
-            callAdminApi('/api/admin/scores/pending'),
+            adminFetch('/api/admin/songs/pending'),
+            adminFetch('/api/admin/scores/pending'),
         ]);
 
         songsEl.innerHTML = songs.length
@@ -140,13 +85,20 @@ async function loadPending() {
             ? scores.map(scoreCard).join('')
             : '<p class="empty">未承認のスコア投稿はありません。</p>';
 
-        setAdminCreds(userInput.value.trim(), passwordInput.value);
         setInfo('未承認一覧を更新しました。', 'ok');
     } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
         songsEl.innerHTML = '<p class="error">取得に失敗しました。</p>';
         scoresEl.innerHTML = '<p class="error">取得に失敗しました。</p>';
         setInfo(err.message, 'ng');
     }
+}
+
+function parseOptionalInt(text) {
+    const trimmed = text.trim();
+    if (trimmed === '') return { ok: true, value: null };
+    if (!/^\d+$/.test(trimmed)) return { ok: false };
+    return { ok: true, value: Number(trimmed) };
 }
 
 async function onSongAction(target) {
@@ -161,25 +113,19 @@ async function onSongAction(target) {
     target.disabled = true;
     try {
         if (isApprove) {
-            await callAdminApi(`/api/admin/songs/${songId}/approve`, { method: 'POST', body: '{}' });
+            await adminFetch(`/api/admin/songs/${songId}/approve`, { method: 'POST', body: '{}' });
             setInfo(`楽曲提案 ${songId} を承認しました。`, 'ok');
         } else {
-            await callAdminApi(`/api/admin/songs/${songId}/reject`, { method: 'POST', body: '{}' });
+            await adminFetch(`/api/admin/songs/${songId}/reject`, { method: 'POST', body: '{}' });
             setInfo(`楽曲提案 ${songId} を却下しました。`, 'info');
         }
         await loadPending();
     } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
         setInfo(err.message, 'ng');
     } finally {
         target.disabled = false;
     }
-}
-
-function parseOptionalInt(text) {
-    const trimmed = text.trim();
-    if (trimmed === '') return { ok: true, value: null };
-    if (!/^\d+$/.test(trimmed)) return { ok: false };
-    return { ok: true, value: Number(trimmed) };
 }
 
 async function onScoreAction(target) {
@@ -193,19 +139,12 @@ async function onScoreAction(target) {
     target.disabled = true;
     try {
         if (target.classList.contains('action-approve')) {
-            await callAdminApi(`${scorePath}/approve`, {
-                method: 'POST',
-                body: '{}',
-            });
+            await adminFetch(`${scorePath}/approve`, { method: 'POST', body: '{}' });
             setInfo(`スコア event=${eventId} submit=${submitId} を承認しました。`, 'ok');
         } else if (target.classList.contains('action-approve-edit')) {
-            const scoreInput = window.prompt(
-                '修正後スコアを入力（未入力なら元の値のまま）',
-                score ?? '');
+            const scoreInput = window.prompt('修正後スコアを入力（未入力なら元の値のまま）', score ?? '');
             if (scoreInput === null) return;
-            const exInput = window.prompt(
-                '修正後EXスコアを入力（未入力なら元の値のまま）',
-                exScore ?? '');
+            const exInput = window.prompt('修正後EXスコアを入力（未入力なら元の値のまま）', exScore ?? '');
             if (exInput === null) return;
 
             const parsedScore = parseOptionalInt(scoreInput);
@@ -218,7 +157,7 @@ async function onScoreAction(target) {
             if (parsedScore.value !== null) payload.score = parsedScore.value;
             if (parsedEx.value !== null) payload.exScore = parsedEx.value;
 
-            await callAdminApi(`${scorePath}/approve`, {
+            await adminFetch(`${scorePath}/approve`, {
                 method: 'POST',
                 body: JSON.stringify(payload),
             });
@@ -227,10 +166,7 @@ async function onScoreAction(target) {
             if (!confirm(`スコア event=${eventId} submit=${submitId} を却下します。よろしいですか？`)) {
                 return;
             }
-            await callAdminApi(`${scorePath}/reject`, {
-                method: 'POST',
-                body: '{}',
-            });
+            await adminFetch(`${scorePath}/reject`, { method: 'POST', body: '{}' });
             setInfo(`スコア event=${eventId} submit=${submitId} を却下しました。`, 'info');
         } else {
             return;
@@ -238,6 +174,7 @@ async function onScoreAction(target) {
 
         await loadPending();
     } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
         setInfo(err.message, 'ng');
     } finally {
         target.disabled = false;
@@ -260,3 +197,5 @@ scoresEl.addEventListener('click', async (ev) => {
     if (!classes.some((c) => target.classList.contains(c))) return;
     await onScoreAction(target);
 });
+
+loadPending();

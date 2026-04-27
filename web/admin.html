@@ -14,20 +14,10 @@
         <div id="admin-nav"></div>
         <h1>管理画面</h1>
 
-        <section class="form">
-            <div class="field">
-                <label for="admin-user">Basic 認証ユーザー名 <span class="required">*</span></label>
-                <input type="text" id="admin-user" autocomplete="username" required>
-            </div>
-            <div class="field">
-                <label for="admin-password">Basic 認証パスワード <span class="required">*</span></label>
-                <input type="password" id="admin-password" autocomplete="current-password" required>
-            </div>
-            <div class="form-actions">
-                <button type="button" id="load-btn">未承認一覧を再取得</button>
-            </div>
-            <p id="admin-result" class="result" role="status" aria-live="polite"></p>
-        </section>
+        <div class="form-actions">
+            <button type="button" id="load-btn">再読み込み</button>
+        </div>
+        <p id="admin-result" class="result" role="status" aria-live="polite"></p>
 
         <section class="event-card">
             <h2>未承認の選曲提案</h2>

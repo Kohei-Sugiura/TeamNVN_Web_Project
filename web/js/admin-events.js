@@ -1,3 +1,4 @@
+ensureLoggedIn();
 renderAdminNav('#admin-nav');
 
 const listEl = document.getElementById('list');
