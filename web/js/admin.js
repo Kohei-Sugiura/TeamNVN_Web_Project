@@ -58,6 +58,21 @@ function scoreCard(item) {
         <button type="button" class="action-approve-edit">修正して承認</button>
         <button type="button" class="action-reject">却下</button>
       </div>
+      <div class="admin-edit-panel" hidden>
+        <div class="admin-edit-fields">
+          <label>スコア
+            <input type="number" class="edit-score" value="${item.score}" min="0" max="10000000">
+          </label>
+          <label>EXスコア
+            <input type="number" class="edit-ex-score" value="${item.exScore == null ? '' : item.exScore}" min="0" placeholder="(未入力可)">
+          </label>
+        </div>
+        <p class="hint">いずれか / 両方を編集して「この値で承認」してください。空欄のまま承認すれば元の値のままです。</p>
+        <div class="admin-actions">
+          <button type="button" class="action-edit-confirm">この値で承認</button>
+          <button type="button" class="action-edit-cancel">キャンセル</button>
+        </div>
+      </div>
     </article>
   `;
 }
@@ -128,40 +143,63 @@ async function onSongAction(target) {
     }
 }
 
+function toggleEditPanel(card, showEdit) {
+    const actions = card.querySelector('.admin-actions');
+    const panel = card.querySelector('.admin-edit-panel');
+    if (!actions || !panel) return;
+    actions.hidden = showEdit;
+    panel.hidden = !showEdit;
+}
+
+function readEditValues(panel) {
+    const scoreRaw = panel.querySelector('.edit-score').value.trim();
+    const exRaw = panel.querySelector('.edit-ex-score').value.trim();
+    const parsedScore = parseOptionalInt(scoreRaw);
+    const parsedEx = parseOptionalInt(exRaw);
+    if (!parsedScore.ok || !parsedEx.ok) {
+        throw new Error('スコア/EXスコアは半角整数で入力してください');
+    }
+    const payload = {};
+    if (parsedScore.value !== null) payload.score = parsedScore.value;
+    if (parsedEx.value !== null) payload.exScore = parsedEx.value;
+    return payload;
+}
+
 async function onScoreAction(target) {
-    const actions = target.closest('.admin-actions');
+    const card = target.closest('.admin-item');
+    if (!card) return;
+    const actions = card.querySelector('.admin-actions');
     if (!actions) return;
-    const { eventId, xId, submitId, score, exScore } = actions.dataset;
+    const { eventId, xId, submitId } = actions.dataset;
     if (!eventId || !xId || !submitId) return;
 
     const scorePath = `/api/admin/scores/${eventId}/${encodeURIComponent(xId)}/${submitId}`;
+
+    if (target.classList.contains('action-approve-edit')) {
+        toggleEditPanel(card, true);
+        return;
+    }
+    if (target.classList.contains('action-edit-cancel')) {
+        toggleEditPanel(card, false);
+        return;
+    }
 
     target.disabled = true;
     try {
         if (target.classList.contains('action-approve')) {
             await adminFetch(`${scorePath}/approve`, { method: 'POST', body: '{}' });
             setInfo(`スコア event=${eventId} submit=${submitId} を承認しました。`, 'ok');
-        } else if (target.classList.contains('action-approve-edit')) {
-            const scoreInput = window.prompt('修正後スコアを入力（未入力なら元の値のまま）', score ?? '');
-            if (scoreInput === null) return;
-            const exInput = window.prompt('修正後EXスコアを入力（未入力なら元の値のまま）', exScore ?? '');
-            if (exInput === null) return;
-
-            const parsedScore = parseOptionalInt(scoreInput);
-            const parsedEx = parseOptionalInt(exInput);
-            if (!parsedScore.ok || !parsedEx.ok) {
-                throw new Error('スコア/EXスコアは半角整数で入力してください');
-            }
-
-            const payload = {};
-            if (parsedScore.value !== null) payload.score = parsedScore.value;
-            if (parsedEx.value !== null) payload.exScore = parsedEx.value;
-
+        } else if (target.classList.contains('action-edit-confirm')) {
+            const panel = card.querySelector('.admin-edit-panel');
+            const payload = readEditValues(panel);
             await adminFetch(`${scorePath}/approve`, {
                 method: 'POST',
                 body: JSON.stringify(payload),
             });
-            setInfo(`スコア event=${eventId} submit=${submitId} を修正して承認しました。`, 'ok');
+            const summary = Object.keys(payload).length === 0
+                ? '修正なしで承認'
+                : `修正値 ${JSON.stringify(payload)} で承認`;
+            setInfo(`スコア event=${eventId} submit=${submitId} を${summary}しました。`, 'ok');
         } else if (target.classList.contains('action-reject')) {
             if (!confirm(`スコア event=${eventId} submit=${submitId} を却下します。よろしいですか？`)) {
                 return;
@@ -193,7 +231,7 @@ songsEl.addEventListener('click', async (ev) => {
 scoresEl.addEventListener('click', async (ev) => {
     const target = ev.target;
     if (!(target instanceof HTMLButtonElement)) return;
-    const classes = ['action-approve', 'action-approve-edit', 'action-reject'];
+    const classes = ['action-approve', 'action-approve-edit', 'action-reject', 'action-edit-confirm', 'action-edit-cancel'];
     if (!classes.some((c) => target.classList.contains(c))) return;
     await onScoreAction(target);
 });
