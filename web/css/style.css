@@ -736,6 +736,10 @@ span.effect.effect-ult {
   color: #9090b0;
 }
 
+.ranking-table .status-cell {
+  text-align: center;
+}
+
 .status-active {
   color: #00e5ff;
   font-weight: bold;
@@ -749,21 +753,12 @@ span.effect.effect-ult {
 }
 
 .status-link {
-  display: inline-block;
-  padding: 4px 12px;
-  font-weight: bold;
-  letter-spacing: 0.05em;
-  color: #ff3d8a;
-  background: rgba(255, 61, 138, 0.08);
-  border: 1px solid rgba(255, 61, 138, 0.5);
-  border-radius: 999px;
-  text-decoration: none;
+  color: #00e5ff;
+  text-decoration: underline;
 }
 
 .status-link:hover {
-  background: rgba(255, 61, 138, 0.2);
-  text-shadow: 0 0 6px rgba(255, 61, 138, 0.6);
-  text-decoration: none;
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
 }
 
 /* ============================================

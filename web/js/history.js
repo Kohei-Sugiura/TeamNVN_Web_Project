@@ -55,7 +55,7 @@ function heldRow(s, idx, now) {
         <td><span class="effect effect-${(s.effect || '').toLowerCase()}">${escapeHtml(s.effect)}</span></td>
         <td>${escapeHtml(s.submitName)}</td>
         <td>${escapeHtml(period)}</td>
-        <td>${statusCell(s, now)}</td>
+        <td class="status-cell">${statusCell(s, now)}</td>
       </tr>
     `;
 }
@@ -80,7 +80,7 @@ function renderHeld(items, now) {
     heldEl.innerHTML = `
       <table class="ranking-table history-table">
         <thead>
-          <tr><th>#</th><th>楽曲</th><th>譜面種</th><th>提案者</th><th>開催期間</th><th>ステータス</th></tr>
+          <tr><th>#</th><th>楽曲</th><th>譜面種</th><th>提案者</th><th>開催期間</th><th class="status-cell">ステータス</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
