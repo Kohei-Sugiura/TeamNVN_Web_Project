@@ -16,6 +16,34 @@ public class EventsController : ControllerBase
         _dataSource = dataSource;
     }
 
+    [HttpGet("recent")]
+    public async Task<IActionResult> Recent(
+        [FromQuery] int limit = 3,
+        CancellationToken ct = default)
+    {
+        if (limit < 1) limit = 1;
+        if (limit > 50) limit = 50;
+
+        const string sql = """
+            SELECT
+                e.weepa_event_id AS "WeepaEventId",
+                e.weepa_song_id  AS "WeepaSongId",
+                s.song           AS "Song",
+                s.effect         AS "Effect",
+                e.start_date     AS "StartDate",
+                e.end_date       AS "EndDate"
+            FROM weepa_events e
+            JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
+            ORDER BY e.start_date DESC
+            LIMIT @Limit
+            """;
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var events = await conn.QueryAsync<EventResponse>(
+            new CommandDefinition(sql, new { Limit = limit }, cancellationToken: ct));
+        return Ok(events);
+    }
+
     [HttpGet("past")]
     public async Task<IActionResult> Past(CancellationToken ct)
     {
