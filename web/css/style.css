@@ -543,16 +543,6 @@ a:hover {
   background: rgba(0, 229, 255, 0.06);
 }
 
-.ranking-table tbody tr:first-child td {
-  color: #fff;
-}
-
-.ranking-table tbody tr:first-child .name {
-  color: #ffd93d;
-  text-shadow: 0 0 8px rgba(255, 217, 61, 0.5);
-  font-weight: bold;
-}
-
 .ranking-table .name {
   color: #eaeaf0;
 }
@@ -568,14 +558,6 @@ a:hover {
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: #9090b0;
-}
-
-/* 履歴テーブルは1位ゴールドハイライトを無効化（ランキングではないため） */
-.history-table tbody tr:first-child td,
-.history-table tbody tr:first-child .name {
-  color: #eaeaf0;
-  text-shadow: none;
-  font-weight: normal;
 }
 
 /* ============================================
