@@ -38,12 +38,6 @@ public class ScoresController : ControllerBase
         [FromForm] ScoreSubmissionRequest request,
         CancellationToken ct)
     {
-        // ハニーポット: 隠しフィールドが埋まっていたら bot とみなして偽成功
-        if (!string.IsNullOrEmpty(request.Website))
-        {
-            return Ok(new { message = "ok" });
-        }
-
         // 1. 画像バリデーション
         var image = request.Image;
         if (image.Length == 0)

@@ -21,7 +21,4 @@ public sealed class ScoreSubmissionRequest
 
     [Required(ErrorMessage = "リザルト画像は必須です")]
     public IFormFile Image { get; set; } = null!;
-
-    // ハニーポット: 人間UIには出ない隠しフィールド。値が入っていれば bot 投稿。
-    public string? Website { get; set; }
 }
