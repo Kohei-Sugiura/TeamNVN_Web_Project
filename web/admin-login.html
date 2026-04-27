@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理者ログイン - Team NVN WeePA</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <main class="container">
+        <p><a href="/">← トップへ</a></p>
+        <h1>管理者ログイン</h1>
+
+        <form id="login-form" class="form" novalidate>
+            <div class="field">
+                <label for="user">ユーザー名 <span class="required">*</span></label>
+                <input type="text" id="user" name="user" autocomplete="username" required>
+            </div>
+            <div class="field">
+                <label for="password">パスワード <span class="required">*</span></label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+            <div class="form-actions">
+                <button type="submit" id="login-btn">ログイン</button>
+            </div>
+            <p id="msg" class="result" role="status" aria-live="polite"></p>
+        </form>
+    </main>
+
+    <script src="/js/admin-common.js"></script>
+    <script src="/js/admin-login.js"></script>
+</body>
+
+</html>

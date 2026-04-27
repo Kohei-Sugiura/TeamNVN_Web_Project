@@ -28,11 +28,30 @@ function promptAdminCreds() {
     return creds;
 }
 
+const ADMIN_LOGIN_PATH = '/admin-login.html';
+
+function redirectToLogin() {
+    const ret = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.replace(`${ADMIN_LOGIN_PATH}?return=${ret}`);
+}
+
+function ensureLoggedIn() {
+    if (getAdminCreds()) return;
+    redirectToLogin();
+    // throw to halt any subsequent script execution while redirect is in flight
+    throw new Error('AUTH_REDIRECT');
+}
+
+function logoutAdmin() {
+    clearAdminCreds();
+    window.location.replace(ADMIN_LOGIN_PATH);
+}
+
 async function adminFetch(path, opts = {}) {
-    let creds = getAdminCreds();
+    const creds = getAdminCreds();
     if (!creds) {
-        creds = promptAdminCreds();
-        if (!creds) throw new Error('認証情報が必要です');
+        redirectToLogin();
+        throw new Error('AUTH_REDIRECT');
     }
 
     const res = await fetch(path, {
@@ -46,7 +65,8 @@ async function adminFetch(path, opts = {}) {
 
     if (res.status === 401) {
         clearAdminCreds();
-        throw new Error('認証に失敗しました。ページをリロードして再ログインしてください。');
+        redirectToLogin();
+        throw new Error('AUTH_REDIRECT');
     }
 
     if (!res.ok) {
@@ -118,10 +138,20 @@ const ADMIN_NAV = `
     <a href="/admin-events.html">イベント</a>
     <span class="sep">|</span>
     <a href="/admin-scores.html">スコア</a>
+    <span class="sep">|</span>
+    <a href="#" id="admin-logout-link">ログアウト</a>
   </p>
 `;
 
 function renderAdminNav(containerSelector) {
     const el = document.querySelector(containerSelector);
-    if (el) el.innerHTML = ADMIN_NAV;
+    if (!el) return;
+    el.innerHTML = ADMIN_NAV;
+    const logoutLink = document.getElementById('admin-logout-link');
+    if (logoutLink) {
+        logoutLink.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            logoutAdmin();
+        });
+    }
 }
