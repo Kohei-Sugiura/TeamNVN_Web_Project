@@ -319,9 +319,12 @@ a:hover {
 
 span.effect {
   display: inline-block;
-  padding: 3px 12px;
+  box-sizing: border-box;
+  min-width: 64px;
+  padding: 3px 10px;
   font-size: 0.8rem;
   font-weight: bold;
+  text-align: center;
   color: #00e5ff;
   background: rgba(0, 229, 255, 0.12);
   border: 1px solid rgba(0, 229, 255, 0.5);
