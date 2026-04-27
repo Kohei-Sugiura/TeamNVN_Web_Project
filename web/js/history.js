@@ -1,6 +1,8 @@
 const heldEl = document.getElementById('held');
 const unheldEl = document.getElementById('unheld');
 
+const TALLIED_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+
 function escapeHtml(s) {
     if (s === null || s === undefined) return '';
     return String(s).replace(/[&<>"']/g, (c) => ({
@@ -24,20 +26,36 @@ function formatPeriod(startIso, endIso) {
     return `${s}~${e}`;
 }
 
-function heldRow(s, idx) {
+function eventState(s, now) {
+    if (!s.eventStartDate || !s.eventEndDate) return null;
+    const start = new Date(s.eventStartDate);
+    const end = new Date(s.eventEndDate);
+    if (now < start) return 'upcoming';
+    if (now < end) return 'active';
+    if (now < new Date(end.getTime() + TALLIED_AFTER_MS)) return 'tallying';
+    return 'finished';
+}
+
+function statusCell(s, now) {
+    const state = eventState(s, now);
+    if (state === 'active') return '<span class="status-active">開催中</span>';
+    if (state === 'tallying') return '<span class="status-tallying">集計中</span>';
+    if (state === 'finished' && s.weepaEventId) {
+        return `<a class="status-link" href="/ranking.html?eventId=${encodeURIComponent(s.weepaEventId)}">結果を表示</a>`;
+    }
+    return '<span class="status-tallying">-</span>';
+}
+
+function heldRow(s, idx, now) {
     const period = formatPeriod(s.eventStartDate, s.eventEndDate);
-    const isFinished = s.eventEndDate && new Date(s.eventEndDate) < new Date();
-    const clickable = isFinished && s.weepaEventId;
-    const trAttrs = clickable
-        ? ` class="clickable" data-event-id="${s.weepaEventId}"`
-        : '';
     return `
-      <tr${trAttrs}>
+      <tr>
         <td>${idx + 1}</td>
         <td>${escapeHtml(s.song)}</td>
         <td><span class="effect effect-${(s.effect || '').toLowerCase()}">${escapeHtml(s.effect)}</span></td>
         <td>${escapeHtml(s.submitName)} (@${escapeHtml(s.xId)})</td>
         <td>${escapeHtml(period)}</td>
+        <td>${statusCell(s, now)}</td>
       </tr>
     `;
 }
@@ -53,16 +71,16 @@ function unheldRow(s) {
     `;
 }
 
-function renderHeld(items) {
+function renderHeld(items, now) {
     if (!items.length) {
         heldEl.innerHTML = '<p class="empty">まだ開催履歴はありません。</p>';
         return;
     }
-    const rows = items.map(heldRow).join('');
+    const rows = items.map((s, i) => heldRow(s, i, now)).join('');
     heldEl.innerHTML = `
       <table class="ranking-table history-table">
         <thead>
-          <tr><th>#</th><th>楽曲</th><th>譜面種</th><th>提案者</th><th>開催日</th></tr>
+          <tr><th>#</th><th>楽曲</th><th>譜面種</th><th>提案者</th><th>開催期間</th><th>ステータス</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -90,6 +108,7 @@ function renderUnheld(items) {
         const res = await fetch('/api/songs');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const items = await res.json();
+        const now = new Date();
 
         const held = items
             .filter((s) => s.approvalStatus === 2 && s.eventStartDate)
@@ -99,16 +118,8 @@ function renderUnheld(items) {
             .filter((s) => s.approvalStatus === 0 || s.approvalStatus === 1)
             .sort((a, b) => new Date(a.submitDate) - new Date(b.submitDate));
 
-        renderHeld(held);
+        renderHeld(held, now);
         renderUnheld(unheld);
-
-        heldEl.addEventListener('click', (ev) => {
-            const tr = ev.target.closest('tr.clickable');
-            if (!tr) return;
-            const eventId = tr.dataset.eventId;
-            if (!eventId) return;
-            window.location.href = `/ranking.html?eventId=${encodeURIComponent(eventId)}`;
-        });
     } catch (err) {
         heldEl.innerHTML = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
         unheldEl.innerHTML = '';
