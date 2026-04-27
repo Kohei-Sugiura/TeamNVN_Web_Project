@@ -29,9 +29,17 @@ public class SongsController : ControllerBase
                 s.submit_name     AS "submitName",
                 s.submit_date     AS "submitDate",
                 s.approval_status AS "approvalStatus",
-                (SELECT MIN(e.start_date) FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id) AS "eventStartDate",
-                (SELECT MIN(e.end_date)   FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id) AS "eventEndDate"
+                ev.weepa_event_id AS "weepaEventId",
+                ev.start_date     AS "eventStartDate",
+                ev.end_date       AS "eventEndDate"
             FROM weepa_songs s
+            LEFT JOIN LATERAL (
+                SELECT weepa_event_id, start_date, end_date
+                FROM weepa_events e
+                WHERE e.weepa_song_id = s.weepa_song_id
+                ORDER BY start_date ASC
+                LIMIT 1
+            ) ev ON TRUE
             WHERE s.approval_status >= 0
             ORDER BY s.weepa_song_id DESC
             """;
