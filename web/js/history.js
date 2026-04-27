@@ -27,13 +27,14 @@ function formatPeriod(startIso, endIso) {
 function heldRow(s, idx) {
     const period = formatPeriod(s.eventStartDate, s.eventEndDate);
     const isFinished = s.eventEndDate && new Date(s.eventEndDate) < new Date();
-    const songCell = isFinished && s.weepaEventId
-        ? `<a href="/ranking.html?eventId=${encodeURIComponent(s.weepaEventId)}">${escapeHtml(s.song)}</a>`
-        : escapeHtml(s.song);
+    const clickable = isFinished && s.weepaEventId;
+    const trAttrs = clickable
+        ? ` class="clickable" data-event-id="${s.weepaEventId}"`
+        : '';
     return `
-      <tr>
+      <tr${trAttrs}>
         <td>${idx + 1}</td>
-        <td>${songCell}</td>
+        <td>${escapeHtml(s.song)}</td>
         <td>${escapeHtml(s.effect)}</td>
         <td>${escapeHtml(s.submitName)} (@${escapeHtml(s.xId)})</td>
         <td>${escapeHtml(period)}</td>
@@ -100,6 +101,14 @@ function renderUnheld(items) {
 
         renderHeld(held);
         renderUnheld(unheld);
+
+        heldEl.addEventListener('click', (ev) => {
+            const tr = ev.target.closest('tr.clickable');
+            if (!tr) return;
+            const eventId = tr.dataset.eventId;
+            if (!eventId) return;
+            window.location.href = `/ranking.html?eventId=${encodeURIComponent(eventId)}`;
+        });
     } catch (err) {
         heldEl.innerHTML = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
         unheldEl.innerHTML = '';

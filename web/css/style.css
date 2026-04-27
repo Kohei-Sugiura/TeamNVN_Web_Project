@@ -560,6 +560,14 @@ a:hover {
   color: #9090b0;
 }
 
+.history-table tbody tr.clickable {
+  cursor: pointer;
+}
+
+.history-table tbody tr.clickable:hover {
+  background: rgba(0, 229, 255, 0.1);
+}
+
 /* ============================================
  * Admin
  * ============================================ */
