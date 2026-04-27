@@ -91,7 +91,7 @@ function renderPastList(events) {
     <tr>
       <td class="name"><a href="/ranking.html?eventId=${encodeURIComponent(ev.weepaEventId)}">${escapeHtml(ev.song)}</a></td>
       <td><span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span></td>
-      <td class="ex">${escapeHtml(formatDateOnly(ev.endDate))}</td>
+      <td class="ex">${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</td>
     </tr>
   `).join('');
   pastDisplay.innerHTML = `
@@ -100,7 +100,7 @@ function renderPastList(events) {
         <tr>
           <th>楽曲</th>
           <th>譜面種</th>
-          <th>集計日</th>
+          <th>開催期間</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
