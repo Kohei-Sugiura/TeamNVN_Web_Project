@@ -51,21 +51,30 @@ function activeCard(ev) {
   `;
 }
 
-function recentCard(ev, now) {
+function recentEntry(ev, now) {
   const tallied = isTallied(ev, now);
   const action = tallied
     ? `<a class="event-link" href="/ranking.html?eventId=${encodeURIComponent(ev.weepaEventId)}">ランキング詳細を見る</a>`
     : `<span class="weepa-pending">集計が完了するまでお待ちください</span>`;
   return `
+    <div class="recent-event">
+      <div class="event-title">
+        <span class="song">${escapeHtml(ev.song)}</span>
+        <span class="effect">${escapeHtml(ev.effect)}</span>
+      </div>
+      <p class="period">${escapeHtml(formatYmd(ev.startDate))}~${escapeHtml(formatYmd(ev.endDate))}</p>
+      <p class="event-link-wrap">${action}</p>
+    </div>
+  `;
+}
+
+function recentCard(events, now) {
+  if (!events.length) return '';
+  return `
     <section class="weepa-status-card">
       <h3 class="weepa-status-title">直近の開催</h3>
-      <div class="weepa-status-body">
-        <div class="event-title">
-          <span class="song">${escapeHtml(ev.song)}</span>
-          <span class="effect">${escapeHtml(ev.effect)}</span>
-        </div>
-        <p class="period">${escapeHtml(formatYmd(ev.startDate))}~${escapeHtml(formatYmd(ev.endDate))}</p>
-        <p class="event-link-wrap">${action}</p>
+      <div class="weepa-status-body recent-events">
+        ${events.map((ev) => recentEntry(ev, now)).join('')}
       </div>
     </section>
   `;
@@ -84,19 +93,20 @@ function adjustingCard() {
 
 (async () => {
   try {
-    const res = await fetch('/api/events/recent?limit=3');
+    const res = await fetch('/api/events/recent?limit=6');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const events = await res.json();
     const now = new Date();
 
     const active = events.find((ev) => isActive(ev, now));
-    const past = events
+    const recent = events
       .filter((ev) => isPast(ev, now))
-      .sort((a, b) => new Date(b.endDate) - new Date(a.endDate))[0];
+      .sort((a, b) => new Date(b.endDate) - new Date(a.endDate))
+      .slice(0, 3);
 
     const cards = [];
     cards.push(active ? activeCard(active) : adjustingCard());
-    if (past) cards.push(recentCard(past, now));
+    if (recent.length) cards.push(recentCard(recent, now));
 
     cardsEl.innerHTML = cards.join('');
   } catch (err) {

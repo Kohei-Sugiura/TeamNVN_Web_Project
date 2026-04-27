@@ -141,6 +141,28 @@ a:hover {
   margin-bottom: 28px;
 }
 
+.weepa-section .announcement {
+  background:
+    linear-gradient(135deg, rgba(187, 0, 255, 0.09), rgba(255, 61, 138, 0.06)),
+    rgba(20, 20, 42, 0.7);
+}
+
+.recent-events {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.recent-events .recent-event {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.recent-events .recent-event:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
 .weepa-links {
   margin-top: 20px;
   display: flex;
