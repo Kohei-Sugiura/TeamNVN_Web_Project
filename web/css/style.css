@@ -204,11 +204,25 @@ a:hover {
 }
 
 .weepa-status-card {
-  margin-top: 6px;
+  margin-top: 12px;
   padding: 14px 16px;
   background: rgba(0, 229, 255, 0.04);
   border: 1px solid rgba(0, 229, 255, 0.2);
   border-radius: 8px;
+}
+
+.weepa-status-card + .weepa-status-card {
+  margin-top: 14px;
+}
+
+.ranking-table.mini {
+  font-size: 0.88rem;
+  margin: 10px 0 12px;
+}
+
+.ranking-table.mini th,
+.ranking-table.mini td {
+  padding: 6px 8px;
 }
 
 .weepa-status-title {
