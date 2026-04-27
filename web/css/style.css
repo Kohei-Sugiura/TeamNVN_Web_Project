@@ -562,10 +562,11 @@ a:hover {
 
 .history-table tbody tr.clickable {
   cursor: pointer;
+  background: rgba(0, 229, 255, 0.06);
 }
 
 .history-table tbody tr.clickable:hover {
-  background: rgba(0, 229, 255, 0.1);
+  background: rgba(0, 229, 255, 0.14);
 }
 
 /* ============================================
