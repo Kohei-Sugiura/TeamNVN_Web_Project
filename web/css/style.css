@@ -361,9 +361,14 @@ span.effect {
 }
 .effect.effect-inf {
   color: #fff;
-  background: linear-gradient(135deg, rgba(255, 87, 198, 0.5) 0%, rgba(168, 85, 247, 0.5) 55%, rgba(80, 112, 255, 0.4) 100%);
-  border-color: rgba(217, 70, 239, 0.7);
-  text-shadow: 0 0 4px rgba(236, 72, 153, 0.7);
+  background: linear-gradient(135deg,
+    rgba(255, 50, 170, 0.65) 0%,
+    rgba(255, 90, 200, 0.6) 35%,
+    rgba(168, 85, 247, 0.5) 75%,
+    rgba(80, 112, 255, 0.35) 100%
+  );
+  border-color: rgba(255, 80, 180, 0.8);
+  text-shadow: 0 0 4px rgba(255, 70, 180, 0.85);
 }
 .effect.effect-grv {
   color: #ff7c1a;
