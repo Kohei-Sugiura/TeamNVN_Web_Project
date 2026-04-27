@@ -142,15 +142,34 @@ a:hover {
 }
 
 .weepa-links {
-  margin-top: 18px;
-  text-align: center;
-  font-size: 0.95rem;
-  letter-spacing: 0.05em;
+  margin-top: 20px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .weepa-links .sep {
-  color: #505070;
-  margin: 0 12px;
+  display: none;
+}
+
+.weepa-links a {
+  display: inline-block;
+  padding: 9px 20px;
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+  color: #00e5ff;
+  background: rgba(0, 229, 255, 0.06);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 999px;
+  text-decoration: none;
+  transition: background 0.15s ease, text-shadow 0.15s ease;
+}
+
+.weepa-links a:hover {
+  background: rgba(0, 229, 255, 0.16);
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
+  text-decoration: none;
 }
 
 .announcement {
@@ -172,14 +191,16 @@ a:hover {
 
 .announcement-head .badge {
   display: inline-block;
-  padding: 3px 14px;
-  font-size: 0.75rem;
+  padding: 6px 22px;
+  font-size: 1.05rem;
   font-weight: bold;
   color: #fff;
-  background: linear-gradient(135deg, #ff3d8a 0%, #bb00ff 100%);
+  background: linear-gradient(135deg, rgba(255, 61, 138, 0.25) 0%, rgba(187, 0, 255, 0.25) 100%);
+  border: 1px solid rgba(255, 61, 138, 0.5);
   border-radius: 999px;
-  letter-spacing: 0.14em;
-  box-shadow: 0 0 12px rgba(255, 61, 138, 0.5);
+  letter-spacing: 0.16em;
+  text-shadow: 0 0 8px rgba(255, 61, 138, 0.6);
+  box-shadow: 0 0 14px rgba(255, 61, 138, 0.25);
 }
 
 .weepa-status-card {
