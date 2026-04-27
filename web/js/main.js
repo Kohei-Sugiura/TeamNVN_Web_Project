@@ -22,13 +22,16 @@ function formatYmd(iso) {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function eventState(ev, now = new Date()) {
-  const start = new Date(ev.startDate);
-  const end = new Date(ev.endDate);
-  if (now < start) return 'upcoming';
-  if (now < end) return 'active';
-  if (now < new Date(end.getTime() + TALLIED_AFTER_MS)) return 'tallying';
-  return 'finished';
+function isActive(ev, now) {
+  return new Date(ev.startDate) <= now && now < new Date(ev.endDate);
+}
+
+function isPast(ev, now) {
+  return new Date(ev.endDate) <= now;
+}
+
+function isTallied(ev, now) {
+  return now >= new Date(new Date(ev.endDate).getTime() + TALLIED_AFTER_MS);
 }
 
 function activeCard(ev) {
@@ -48,34 +51,21 @@ function activeCard(ev) {
   `;
 }
 
-function tallyingCard(ev) {
+function recentCard(ev, now) {
+  const tallied = isTallied(ev, now);
+  const action = tallied
+    ? `<a class="event-link" href="/ranking.html?eventId=${encodeURIComponent(ev.weepaEventId)}">ランキング詳細を見る</a>`
+    : `<span class="weepa-pending">集計が完了するまでお待ちください</span>`;
   return `
     <section class="weepa-status-card">
-      <h3 class="weepa-status-title">集計中</h3>
+      <h3 class="weepa-status-title">直近の開催</h3>
       <div class="weepa-status-body">
         <div class="event-title">
           <span class="song">${escapeHtml(ev.song)}</span>
           <span class="effect">${escapeHtml(ev.effect)}</span>
         </div>
         <p class="period">${escapeHtml(formatYmd(ev.startDate))}~${escapeHtml(formatYmd(ev.endDate))}</p>
-        <p class="hint">集計が完了するまでしばらくお待ちください。</p>
-      </div>
-    </section>
-  `;
-}
-
-function finishedCard(ev) {
-  const url = `/ranking.html?eventId=${encodeURIComponent(ev.weepaEventId)}`;
-  return `
-    <section class="weepa-status-card">
-      <h3 class="weepa-status-title">集計結果</h3>
-      <div class="weepa-status-body">
-        <div class="event-title">
-          <span class="song">${escapeHtml(ev.song)}</span>
-          <span class="effect">${escapeHtml(ev.effect)}</span>
-        </div>
-        <p class="period">${escapeHtml(formatYmd(ev.startDate))}~${escapeHtml(formatYmd(ev.endDate))}</p>
-        <p class="event-link-wrap"><a class="event-link" href="${url}">ランキング詳細を見る</a></p>
+        <p class="event-link-wrap">${action}</p>
       </div>
     </section>
   `;
@@ -92,29 +82,21 @@ function adjustingCard() {
   `;
 }
 
-function renderCard(ev) {
-  switch (eventState(ev)) {
-    case 'active': return activeCard(ev);
-    case 'tallying': return tallyingCard(ev);
-    case 'finished': return finishedCard(ev);
-    default: return '';
-  }
-}
-
 (async () => {
   try {
     const res = await fetch('/api/events/recent?limit=3');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const events = await res.json();
+    const now = new Date();
 
-    if (!events.length) {
-      cardsEl.innerHTML = adjustingCard();
-      return;
-    }
+    const active = events.find((ev) => isActive(ev, now));
+    const past = events
+      .filter((ev) => isPast(ev, now))
+      .sort((a, b) => new Date(b.endDate) - new Date(a.endDate))[0];
 
-    const hasActive = events.some((ev) => eventState(ev) === 'active');
-    const cards = events.map(renderCard).filter(Boolean);
-    if (!hasActive) cards.unshift(adjustingCard());
+    const cards = [];
+    cards.push(active ? activeCard(active) : adjustingCard());
+    if (past) cards.push(recentCard(past, now));
 
     cardsEl.innerHTML = cards.join('');
   } catch (err) {

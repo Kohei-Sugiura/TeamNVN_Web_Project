@@ -221,6 +221,17 @@ a:hover {
   font-size: 0.92rem;
 }
 
+.weepa-pending {
+  display: inline-block;
+  padding: 10px 20px;
+  color: #c0c0e0;
+  background: rgba(20, 20, 42, 0.6);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  letter-spacing: 0.06em;
+  font-size: 0.95rem;
+}
+
 .weepa-status-title {
   margin: 0 0 12px;
   font-size: 1.1rem;
