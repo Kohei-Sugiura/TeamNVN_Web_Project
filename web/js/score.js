@@ -123,6 +123,7 @@ form.addEventListener('submit', async (ev) => {
   if (form.image.files[0]) {
     fd.append('image', form.image.files[0]);
   }
+  fd.append('website', form.website.value);
 
   btn.disabled = true;
   resultEl.textContent = '送信中...';

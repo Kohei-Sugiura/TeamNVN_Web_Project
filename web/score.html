@@ -57,6 +57,13 @@
         <p class="error" data-for="image"></p>
       </div>
 
+      <!-- ハニーポット (bot用) — 人間にはCSSで完全非表示 -->
+      <div class="honeypot" aria-hidden="true">
+        <label>Website
+          <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+        </label>
+      </div>
+
       <div class="form-actions">
         <button type="submit" id="submit-btn">スコアを投稿する</button>
       </div>
