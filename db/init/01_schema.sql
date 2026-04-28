@@ -15,6 +15,10 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- approval_status: -1=却下 / 0=未承認 / 1=承認済み(未実施) / 2=実施済み（過去イベントで使用済み）
 -- 負値=終端（却下） / 非負=前進パイプライン。"非却下" は approval_status >= 0 で表現。
 -- イベント作成時（手動・auto-weekly 双方）で対象曲を 1→2 に遷移。auto-weekly の抽選は status=1 のみ。
+-- schedule_order: status=1 の楽曲の開催予定キュー位置。値が小さいほど早く開催。
+--   - 0→1 (承認) 時に MAX+1 を付与（末尾追加）
+--   - 1→2 (イベント作成) / 1→-1 (却下後の差し戻し等) 時に NULL に戻す
+--   - 並び替えは管理画面の「開催スケジュール」タブから行う
 -- ============================================
 CREATE TABLE weepa_songs (
     weepa_song_id   SERIAL PRIMARY KEY,
@@ -24,7 +28,8 @@ CREATE TABLE weepa_songs (
     submit_name     TEXT NOT NULL,
     submit_reason   TEXT,
     submit_date     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    approval_status SMALLINT NOT NULL DEFAULT 0
+    approval_status SMALLINT NOT NULL DEFAULT 0,
+    schedule_order  INTEGER
 );
 
 -- ============================================

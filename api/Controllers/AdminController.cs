@@ -70,12 +70,16 @@ public class AdminController : ControllerBase
         var effect = string.IsNullOrWhiteSpace(request?.Effect) ? null : request.Effect;
 
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        // 承認時に schedule_order を MAX+1 に設定 (末尾追加)
         var affected = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE weepa_songs
             SET approval_status = 1,
-                song   = COALESCE(@Song, song),
-                effect = COALESCE(@Effect, effect)
+                song            = COALESCE(@Song, song),
+                effect          = COALESCE(@Effect, effect),
+                schedule_order  = COALESCE(
+                    (SELECT MAX(schedule_order) FROM weepa_songs WHERE schedule_order IS NOT NULL), 0
+                ) + 1
             WHERE weepa_song_id = @Id
               AND approval_status = 0
             """,
@@ -341,7 +345,7 @@ public class AdminController : ControllerBase
             cancellationToken: ct));
 
         await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE weepa_songs SET approval_status = 2 WHERE weepa_song_id = @Id",
+            "UPDATE weepa_songs SET approval_status = 2, schedule_order = NULL WHERE weepa_song_id = @Id",
             new { Id = request.WeepaSongId },
             transaction: tx,
             cancellationToken: ct));
@@ -428,12 +432,13 @@ public class AdminController : ControllerBase
             return Conflict(new { message = "重複する開催期間のイベントが既に存在します" });
         }
 
+        // 開催スケジュール先頭の楽曲を選出。schedule_order が NULL の曲は末尾扱い（基本起こらない想定）。
         var weepaSongId = await conn.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
             """
             SELECT weepa_song_id
             FROM weepa_songs
             WHERE approval_status = 1
-            ORDER BY random()
+            ORDER BY schedule_order ASC NULLS LAST, weepa_song_id ASC
             LIMIT 1
             FOR UPDATE SKIP LOCKED
             """,
@@ -462,7 +467,7 @@ public class AdminController : ControllerBase
             cancellationToken: ct));
 
         await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE weepa_songs SET approval_status = 2 WHERE weepa_song_id = @Id",
+            "UPDATE weepa_songs SET approval_status = 2, schedule_order = NULL WHERE weepa_song_id = @Id",
             new { Id = weepaSongId.Value },
             transaction: tx,
             cancellationToken: ct));
