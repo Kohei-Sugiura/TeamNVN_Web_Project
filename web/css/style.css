@@ -881,8 +881,14 @@ span.effect.effect-ult {
   border-radius: 4px;
 }
 
+.db-table-wrap {
+  overflow-x: auto;
+  width: 100%;
+}
+
 .db-table {
   font-size: 0.82rem;
+  min-width: max-content;
 }
 
 .db-table td.actions {

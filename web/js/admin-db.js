@@ -206,10 +206,12 @@ function renderList(table, items) {
     const ths = table.columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join('');
     const rows = items.map((r) => rowHtml(table, r)).join('');
     listEl.innerHTML = `
-      <table class="ranking-table db-table">
-        <thead><tr>${ths}<th>操作</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div class="db-table-wrap">
+        <table class="ranking-table db-table">
+          <thead><tr>${ths}<th>操作</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     `;
 }
 
