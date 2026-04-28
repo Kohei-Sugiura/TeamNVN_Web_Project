@@ -384,8 +384,6 @@ public class AdminController : ControllerBase
             return settingsError!;
         }
 
-        var triggerCron = _configuration["AUTO_WEEKLY_TRIGGER_CRON"] ?? "5 0 * * *";
-
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
 
         // 現在開催中のイベント
@@ -490,7 +488,6 @@ public class AdminController : ControllerBase
                 hour = settings.Hour,
                 minute = settings.Minute,
                 durationHours = settings.DurationHours,
-                triggerCron,
             },
             current,
             queue = queueWithSchedule,

@@ -362,9 +362,8 @@ function renderConfig(cfg) {
         <dt>開催曜日</dt>     <dd>${escapeHtml(dow)}</dd>
         <dt>開始時刻</dt>     <dd>${escapeHtml(time)}</dd>
         <dt>開催期間</dt>     <dd>${cfg.durationHours} 時間 (= ${(cfg.durationHours / 24).toFixed(1)} 日)</dd>
-        <dt>scheduler 起動 (cron, UTC)</dt>
-        <dd><code>${escapeHtml(cfg.triggerCron)}</code></dd>
       </dl>
+      <p class="hint">予定枠の計算に使われるテンプレート設定です。実際のイベント作成は管理者が手動で行います（「次回イベントを生成」ボタン or DB管理）。</p>
     `;
 }
 

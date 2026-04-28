@@ -27,19 +27,6 @@ services:
     networks:
       - internal
 
-  scheduler:
-    build: ./scheduler
-    restart: unless-stopped
-    depends_on:
-      - api
-    environment:
-      ADMIN_BASIC_USER: ${ADMIN_BASIC_USER}
-      ADMIN_BASIC_PASSWORD: ${ADMIN_BASIC_PASSWORD}
-      AUTO_WEEKLY_TRIGGER_CRON: ${AUTO_WEEKLY_TRIGGER_CRON:-5 0 * * *}
-      AUTO_WEEKLY_TRIGGER_URL: http://api:8080/api/admin/events/auto-weekly
-    networks:
-      - internal
-
   nginx:
     image: nginx:alpine
     restart: unless-stopped
