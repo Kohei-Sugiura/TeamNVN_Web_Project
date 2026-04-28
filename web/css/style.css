@@ -99,19 +99,19 @@ a:hover {
   filter: drop-shadow(0 0 16px rgba(230, 0, 51, 0.4));
 }
 
-.site-header h1 a {
+.site-header h1 a,
+.site-header h1 a:link,
+.site-header h1 a:visited,
+.site-header h1 a:hover,
+.site-header h1 a:active {
   color: inherit;
   -webkit-text-fill-color: inherit;
   background: inherit;
   -webkit-background-clip: text;
   background-clip: text;
   text-decoration: none;
+  text-shadow: none;
   cursor: pointer;
-}
-
-.site-header h1 a:hover {
-  text-decoration: none;
-  filter: drop-shadow(0 0 20px rgba(230, 0, 51, 0.7));
 }
 
 .subtitle {
