@@ -107,13 +107,17 @@ function renderUnheld(items) {
         const items = await res.json();
         const now = new Date();
 
-        // 「実施済み」は events 紐付きの有無で判定する。
+        // 「開催済み」= 紐付き event が既に開始している (start_date <= NOW)。
+        // 未来日のイベント枠 (承認時に自動作成された次回以降) はまだ開催されていないので
+        // 「未開催」セクションに入れる。
+        const isHeld = (s) => s.eventStartDate && new Date(s.eventStartDate) <= now;
+
         const held = items
-            .filter((s) => s.eventStartDate)
+            .filter(isHeld)
             .sort((a, b) => new Date(a.eventStartDate) - new Date(b.eventStartDate));
 
         const unheld = items
-            .filter((s) => !s.eventStartDate)
+            .filter((s) => !isHeld(s))
             .sort((a, b) => new Date(a.submitDate) - new Date(b.submitDate));
 
         renderHeld(held, now);
