@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DB管理 - Team NVN WeePA</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <main class="container">
+        <p><a href="/">← トップへ</a></p>
+        <div id="admin-nav"></div>
+        <h1>DB管理</h1>
+
+        <div class="db-table-picker">
+            <label for="table-select">テーブル:</label>
+            <select id="table-select"></select>
+        </div>
+
+        <p id="status" class="result" role="status" aria-live="polite"></p>
+
+        <section class="event-card">
+            <h2>新規作成</h2>
+            <form id="create-form" class="form"></form>
+        </section>
+
+        <section class="ranking-section">
+            <h2 id="list-title">一覧</h2>
+            <div id="list">
+                <p class="loading">読み込み中...</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/js/admin-common.js"></script>
+    <script src="/js/admin-db.js"></script>
+</body>
+
+</html>

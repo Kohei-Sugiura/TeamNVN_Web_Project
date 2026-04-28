@@ -179,11 +179,9 @@ Bot は本リポジトリとは別プロジェクトになる可能性あり。�
 │   ├── admin/                管理画面（要 Basic 認証）
 │   │   ├── index.html        未承認の選曲提案 / スコア承認 ( /admin/ )
 │   │   ├── login/index.html  管理者ログイン ( /admin/login/ )
-│   │   ├── songs/index.html  DB管理 楽曲 ( /admin/songs/ )
-│   │   ├── events/index.html DB管理 イベント ( /admin/events/ )
-│   │   └── scores/index.html DB管理 スコア ( /admin/scores/ )
+│   │   └── db/index.html     DB管理（テーブル切替コンボボックス、対象は admin-db.js の TABLES に追加するだけで増やせる）
 │   ├── css/style.css         SDVX風ネオンテーマ + モバイル対応
-│   └── js/                   main / submit / score / ranking / history / admin / admin-common / admin-login / admin-songs / admin-events / admin-scores
+│   └── js/                   main / submit / score / ranking / history / admin / admin-common / admin-login / admin-db
 ├── nginx/conf.d/default.conf
 ├── db/init/01_schema.sql     初回起動時のみ実行される
 ├── deploy/                   将来のデプロイスクリプト置き場（空）

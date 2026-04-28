@@ -133,11 +133,7 @@ const ADMIN_NAV = `
   <p class="admin-nav">
     <a href="/admin/">未承認</a>
     <span class="sep">|</span>
-    <a href="/admin/songs/">楽曲</a>
-    <span class="sep">|</span>
-    <a href="/admin/events/">イベント</a>
-    <span class="sep">|</span>
-    <a href="/admin/scores/">スコア</a>
+    <a href="/admin/db/">DB管理</a>
     <span class="sep">|</span>
     <a href="#" id="admin-logout-link">ログアウト</a>
   </p>

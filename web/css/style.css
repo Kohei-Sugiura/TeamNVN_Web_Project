@@ -859,6 +859,28 @@ span.effect.effect-ult {
   margin: 0 6px;
 }
 
+.db-table-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+
+.db-table-picker label {
+  color: #c0c0e0;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+}
+
+.db-table-picker select {
+  padding: 8px 12px;
+  font-size: 1rem;
+  background: #0c0c1f;
+  color: #fff;
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  border-radius: 4px;
+}
+
 .db-table {
   font-size: 0.82rem;
 }
