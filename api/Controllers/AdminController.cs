@@ -360,7 +360,7 @@ public class AdminController : ControllerBase
     }
 
     [HttpGet("schedule")]
-    public IActionResult GetSchedule()
+    public async Task<IActionResult> GetSchedule(CancellationToken ct)
     {
         var authFailure = Authenticate();
         if (authFailure is not null) return authFailure;
@@ -372,15 +372,137 @@ public class AdminController : ControllerBase
 
         var triggerCron = _configuration["AUTO_WEEKLY_TRIGGER_CRON"] ?? "5 0 * * *";
 
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        // 現在開催中のイベント
+        var current = await conn.QuerySingleOrDefaultAsync(new CommandDefinition(
+            """
+            SELECT
+                e.weepa_event_id AS "weepaEventId",
+                e.weepa_song_id  AS "weepaSongId",
+                s.song           AS "song",
+                s.effect         AS "effect",
+                s.x_id           AS "xId",
+                s.submit_name    AS "submitName",
+                e.start_date     AS "startDate",
+                e.end_date       AS "endDate"
+            FROM weepa_events e
+            JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
+            WHERE NOW() BETWEEN e.start_date AND e.end_date
+            ORDER BY e.start_date DESC
+            LIMIT 1
+            """,
+            cancellationToken: ct));
+
+        // 未開催キュー (status=1)
+        var queue = await conn.QueryAsync(new CommandDefinition(
+            """
+            SELECT
+                weepa_song_id   AS "weepaSongId",
+                song            AS "song",
+                effect          AS "effect",
+                x_id            AS "xId",
+                submit_name     AS "submitName",
+                schedule_order  AS "scheduleOrder"
+            FROM weepa_songs
+            WHERE approval_status = 1
+            ORDER BY schedule_order ASC NULLS LAST, weepa_song_id ASC
+            """,
+            cancellationToken: ct));
+
+        // キュー先頭から順に予定枠 (start/end) を計算
+        // 起点: 現在開催中があればその end_date、なければ "次回 cron 起算の開始時刻"
+        var nowUtc = DateTimeOffset.UtcNow;
+        DateTimeOffset baseStartLocal;
+        if (current is not null)
+        {
+            DateTimeOffset endUtc = ((DateTime)current.endDate).ToUniversalTime();
+            baseStartLocal = TimeZoneInfo.ConvertTime(endUtc, settings.TimeZone);
+        }
+        else
+        {
+            var nowLocal = TimeZoneInfo.ConvertTime(nowUtc, settings.TimeZone);
+            baseStartLocal = CalculateNextOccurrenceLocal(
+                nowLocal, settings.DayOfWeek, settings.Hour, settings.Minute);
+        }
+
+        var queueWithSchedule = queue.Select((row, idx) =>
+        {
+            var startLocal = baseStartLocal.AddHours(idx * settings.DurationHours);
+            var endLocal = startLocal.AddHours(settings.DurationHours);
+            return new
+            {
+                row.weepaSongId,
+                row.song,
+                row.effect,
+                row.xId,
+                row.submitName,
+                row.scheduleOrder,
+                scheduledStart = startLocal.ToUniversalTime(),
+                scheduledEnd = endLocal.ToUniversalTime(),
+            };
+        }).ToList();
+
         return Ok(new
         {
-            timezone = settings.TimeZone.Id,
-            dayOfWeek = settings.DayOfWeek.ToString(),
-            hour = settings.Hour,
-            minute = settings.Minute,
-            durationHours = settings.DurationHours,
-            triggerCron,
+            config = new
+            {
+                timezone = settings.TimeZone.Id,
+                dayOfWeek = settings.DayOfWeek.ToString(),
+                hour = settings.Hour,
+                minute = settings.Minute,
+                durationHours = settings.DurationHours,
+                triggerCron,
+            },
+            current,
+            queue = queueWithSchedule,
         });
+    }
+
+    [HttpPut("schedule/reorder")]
+    public async Task<IActionResult> ReorderSchedule(
+        [FromBody] ScheduleReorderRequest request,
+        CancellationToken ct)
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        if (request?.Order is null || request.Order.Length == 0)
+        {
+            return BadRequest(new { message = "order が空です" });
+        }
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        // 念の為 status=1 の全件と渡された ID 集合を確認
+        var approvedIds = (await conn.QueryAsync<int>(new CommandDefinition(
+            "SELECT weepa_song_id FROM weepa_songs WHERE approval_status = 1 FOR UPDATE",
+            transaction: tx, cancellationToken: ct))).ToHashSet();
+
+        if (request.Order.Length != approvedIds.Count
+            || request.Order.Any(id => !approvedIds.Contains(id)))
+        {
+            await tx.RollbackAsync(ct);
+            return BadRequest(new
+            {
+                message = "order に承認済みでない id が含まれているか、件数が一致しません",
+                expected = approvedIds.OrderBy(x => x).ToArray(),
+                got = request.Order,
+            });
+        }
+
+        for (var i = 0; i < request.Order.Length; i++)
+        {
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE weepa_songs SET schedule_order = @Order WHERE weepa_song_id = @Id",
+                new { Id = request.Order[i], Order = i + 1 },
+                transaction: tx,
+                cancellationToken: ct));
+        }
+
+        await tx.CommitAsync(ct);
+        return Ok(new { message = "ok" });
     }
 
     [HttpPost("events/auto-weekly")]
