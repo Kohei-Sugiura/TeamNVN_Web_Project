@@ -121,6 +121,24 @@ a:hover {
   letter-spacing: 0.08em;
 }
 
+.site-footer {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.site-footer a {
+  color: #6a6a85;
+  letter-spacing: 0.06em;
+}
+
+.site-footer a:hover {
+  color: #9090b0;
+  text-shadow: none;
+}
+
 /* Generic page h1 (/weepa/submit/ 等、site-header 外の h1) */
 .container>h1 {
   font-size: 1.8rem;
