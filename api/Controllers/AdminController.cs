@@ -58,20 +58,28 @@ public class AdminController : ControllerBase
     }
 
     [HttpPost("songs/{id:int}/approve")]
-    public async Task<IActionResult> ApproveSong(int id, CancellationToken ct)
+    public async Task<IActionResult> ApproveSong(
+        int id,
+        [FromBody] SongApproveRequest? request,
+        CancellationToken ct)
     {
         var authFailure = Authenticate();
         if (authFailure is not null) return authFailure;
+
+        var song = string.IsNullOrWhiteSpace(request?.Song) ? null : request.Song.Trim();
+        var effect = string.IsNullOrWhiteSpace(request?.Effect) ? null : request.Effect;
 
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
         var affected = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE weepa_songs
-            SET approval_status = 1
+            SET approval_status = 1,
+                song   = COALESCE(@Song, song),
+                effect = COALESCE(@Effect, effect)
             WHERE weepa_song_id = @Id
               AND approval_status = 0
             """,
-            new { Id = id },
+            new { Id = id, Song = song, Effect = effect },
             cancellationToken: ct));
 
         if (affected == 0)
