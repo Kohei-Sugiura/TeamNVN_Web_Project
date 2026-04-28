@@ -217,7 +217,6 @@ const scheduleCurrentEl = document.getElementById('schedule-current');
 const scheduleQueueEl = document.getElementById('schedule-queue');
 const schedulePastEl = document.getElementById('schedule-past');
 const scheduleConfigEl = document.getElementById('schedule-config');
-const triggerBtn = document.getElementById('trigger-btn');
 const reorderSaveBtn = document.getElementById('reorder-save-btn');
 
 const DAY_OF_WEEK_LABEL = {
@@ -286,19 +285,19 @@ async function saveCurrentEvent(ev) {
 
 function renderQueue(queue) {
     if (!queue.length) {
-        scheduleQueueEl.innerHTML = '<p class="empty">未開催の楽曲はありません。</p>';
+        scheduleQueueEl.innerHTML = '<p class="empty">未開催のイベントはありません。</p>';
         return;
     }
     const rows = queue.map((q, i) => `
-      <tr data-song-id="${q.weepaSongId}">
+      <tr data-event-id="${q.weepaEventId}">
         <td class="rank">${i + 1}</td>
         <td>${escapeHtml(q.song)}</td>
         <td>${effectBadgeHtml(q.effect)}</td>
         <td>${escapeHtml(q.submitName)} (@${escapeHtml(q.xId)})</td>
-        <td>${escapeHtml(ymd(q.scheduledStart))}~${escapeHtml(ymd(q.scheduledEnd))}</td>
+        <td>${escapeHtml(ymd(q.startDate))}~${escapeHtml(ymd(q.endDate))}</td>
         <td class="actions">
-          <button type="button" class="queue-up" data-song-id="${q.weepaSongId}">↑</button>
-          <button type="button" class="queue-down" data-song-id="${q.weepaSongId}">↓</button>
+          <button type="button" class="queue-up" data-event-id="${q.weepaEventId}">↑</button>
+          <button type="button" class="queue-down" data-event-id="${q.weepaEventId}">↓</button>
         </td>
       </tr>
     `).join('');
@@ -308,7 +307,7 @@ function renderQueue(queue) {
           <thead>
             <tr>
               <th>#</th><th>楽曲</th><th>譜面</th><th>選曲者名</th>
-              <th>開催予定</th><th>並替</th>
+              <th>開催期間</th><th>並替</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -388,8 +387,8 @@ async function loadSchedule() {
     }
 }
 
-function moveQueueRow(songId, dir) {
-    const tr = scheduleQueueEl.querySelector(`tr[data-song-id="${songId}"]`);
+function moveQueueRow(eventId, dir) {
+    const tr = scheduleQueueEl.querySelector(`tr[data-event-id="${eventId}"]`);
     if (!tr) return;
     const sibling = dir === -1 ? tr.previousElementSibling : tr.nextElementSibling;
     if (!sibling) return;
@@ -404,7 +403,7 @@ function moveQueueRow(songId, dir) {
 scheduleQueueEl.addEventListener('click', (ev) => {
     const t = ev.target;
     if (!(t instanceof HTMLButtonElement)) return;
-    const id = Number(t.dataset.songId);
+    const id = Number(t.dataset.eventId);
     if (!id) return;
     if (t.classList.contains('queue-up')) moveQueueRow(id, -1);
     else if (t.classList.contains('queue-down')) moveQueueRow(id, 1);
@@ -412,7 +411,7 @@ scheduleQueueEl.addEventListener('click', (ev) => {
 
 reorderSaveBtn.addEventListener('click', async () => {
     const order = Array.from(scheduleQueueEl.querySelectorAll('tbody tr'))
-        .map((tr) => Number(tr.dataset.songId));
+        .map((tr) => Number(tr.dataset.eventId));
     if (!order.length) return;
     reorderSaveBtn.disabled = true;
     try {
@@ -456,23 +455,6 @@ schedulePastEl.addEventListener('click', async (ev) => {
     }
 });
 
-triggerBtn.addEventListener('click', async () => {
-    if (!confirm('次回イベントを今すぐ自動生成します。よろしいですか？')) return;
-    triggerBtn.disabled = true;
-    try {
-        const result = await adminFetch('/api/admin/events/auto-weekly', {
-            method: 'POST',
-            body: '{}',
-        });
-        setInfo(`イベント生成成功: ${JSON.stringify(result)}`, 'ok');
-        await loadSchedule();
-    } catch (err) {
-        if (err.message === 'AUTH_REDIRECT') return;
-        setInfo(`生成失敗: ${err.message}`, 'ng');
-    } finally {
-        triggerBtn.disabled = false;
-    }
-});
 
 // ============================================
 // タブ切替

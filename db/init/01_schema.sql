@@ -14,12 +14,9 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- weepa_songs（楽曲投稿＝選曲提案）
 -- approval_status: -1=却下 / 0=未承認 / 1=承認済み
 -- 負値=終端（却下） / 非負=前進パイプライン。"非却下" は approval_status >= 0 で表現。
--- 「実施済み」は専用ステータスを持たず、weepa_events に紐付いているかで判定する
--- （e.g. WHERE NOT EXISTS (SELECT 1 FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id)）。
--- schedule_order: 開催予定キュー（承認済み AND 未使用）の並び順。値が小さいほど早く開催。
---   - 0→1 (承認) 時に MAX+1 を付与（末尾追加）
---   - イベント作成時に NULL に戻して新規キューへの混入を防ぐ
---   - 並び替えは管理画面の「開催スケジュール」タブから行う
+-- 「実施済み」は専用ステータスを持たず、weepa_events に紐付いているかで判定する。
+-- 開催キューの順序も weepa_events.start_date で表現する（承認時に events に
+-- 自動で枠が作られ、時間が来れば自動的に開催→終了。schedule_order カラムは不要）。
 -- ============================================
 CREATE TABLE weepa_songs (
     weepa_song_id   SERIAL PRIMARY KEY,
@@ -29,8 +26,7 @@ CREATE TABLE weepa_songs (
     submit_name     TEXT NOT NULL,
     submit_reason   TEXT,
     submit_date     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    approval_status SMALLINT NOT NULL DEFAULT 0,
-    schedule_order  INTEGER
+    approval_status SMALLINT NOT NULL DEFAULT 0
 );
 
 -- ============================================

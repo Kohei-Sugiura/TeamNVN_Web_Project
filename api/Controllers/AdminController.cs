@@ -69,29 +69,67 @@ public class AdminController : ControllerBase
         var song = string.IsNullOrWhiteSpace(request?.Song) ? null : request.Song.Trim();
         var effect = string.IsNullOrWhiteSpace(request?.Effect) ? null : request.Effect;
 
+        if (!TryGetAutoWeeklySettings(out var settings, out var settingsError))
+        {
+            return settingsError!;
+        }
+
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
-        // 承認時に schedule_order を MAX+1 に設定 (末尾追加)
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
         var affected = await conn.ExecuteAsync(new CommandDefinition(
             """
             UPDATE weepa_songs
             SET approval_status = 1,
                 song            = COALESCE(@Song, song),
-                effect          = COALESCE(@Effect, effect),
-                schedule_order  = COALESCE(
-                    (SELECT MAX(schedule_order) FROM weepa_songs WHERE schedule_order IS NOT NULL), 0
-                ) + 1
+                effect          = COALESCE(@Effect, effect)
             WHERE weepa_song_id = @Id
               AND approval_status = 0
             """,
             new { Id = id, Song = song, Effect = effect },
+            transaction: tx,
             cancellationToken: ct));
 
         if (affected == 0)
         {
+            await tx.RollbackAsync(ct);
             return NotFound(new { message = "未承認の対象データが見つかりません" });
         }
 
-        return Ok(new { message = "ok" });
+        // 承認時に開催枠 (event) を自動生成。
+        // start = 既存全イベントの最遅 end_date の続き、無ければ次回の cron テンプレ枠
+        var lastEnd = await conn.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
+            "SELECT MAX(end_date) FROM weepa_events",
+            transaction: tx,
+            cancellationToken: ct));
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        DateTimeOffset start;
+        if (lastEnd.HasValue && new DateTimeOffset(lastEnd.Value, TimeSpan.Zero) > nowUtc)
+        {
+            start = new DateTimeOffset(lastEnd.Value, TimeSpan.Zero);
+        }
+        else
+        {
+            var nowLocal = TimeZoneInfo.ConvertTime(nowUtc, settings.TimeZone);
+            var startLocal = CalculateNextOccurrenceLocal(
+                nowLocal, settings.DayOfWeek, settings.Hour, settings.Minute);
+            start = startLocal.ToUniversalTime();
+        }
+
+        var end = start.AddHours(settings.DurationHours);
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            INSERT INTO weepa_events (weepa_song_id, start_date, end_date)
+            VALUES (@SongId, @Start, @End)
+            """,
+            new { SongId = id, Start = start, End = end },
+            transaction: tx,
+            cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return Ok(new { message = "ok", scheduledStart = start, scheduledEnd = end });
     }
 
     [HttpPost("songs/{id:int}/reject")]
@@ -358,12 +396,6 @@ public class AdminController : ControllerBase
             transaction: tx,
             cancellationToken: ct));
 
-        await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE weepa_songs SET schedule_order = NULL WHERE weepa_song_id = @Id",
-            new { Id = request.WeepaSongId },
-            transaction: tx,
-            cancellationToken: ct));
-
         await tx.CommitAsync(ct);
 
         return CreatedAtAction(
@@ -427,57 +459,25 @@ public class AdminController : ControllerBase
             """,
             cancellationToken: ct));
 
-        // 未開催キュー (status=1)
+        // 未来のイベント (= 開催キュー)。承認時に events に直接スケジュール枠が
+        // 作られているので、ここでは start_date 順に並べるだけ。
         var queue = await conn.QueryAsync(new CommandDefinition(
             """
             SELECT
-                weepa_song_id   AS "weepaSongId",
-                song            AS "song",
-                effect          AS "effect",
-                x_id            AS "xId",
-                submit_name     AS "submitName",
-                schedule_order  AS "scheduleOrder"
-            FROM weepa_songs s
-            WHERE s.approval_status = 1
-              AND NOT EXISTS (
-                  SELECT 1 FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id
-              )
-            ORDER BY s.schedule_order ASC NULLS LAST, s.weepa_song_id ASC
+                e.weepa_event_id AS "weepaEventId",
+                e.weepa_song_id  AS "weepaSongId",
+                s.song           AS "song",
+                s.effect         AS "effect",
+                s.x_id           AS "xId",
+                s.submit_name    AS "submitName",
+                e.start_date     AS "startDate",
+                e.end_date       AS "endDate"
+            FROM weepa_events e
+            JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
+            WHERE e.start_date > NOW()
+            ORDER BY e.start_date ASC
             """,
             cancellationToken: ct));
-
-        // キュー先頭から順に予定枠 (start/end) を計算
-        // 起点: 現在開催中があればその end_date、なければ "次回 cron 起算の開始時刻"
-        var nowUtc = DateTimeOffset.UtcNow;
-        DateTimeOffset baseStartLocal;
-        if (current is not null)
-        {
-            DateTimeOffset endUtc = ((DateTime)current.endDate).ToUniversalTime();
-            baseStartLocal = TimeZoneInfo.ConvertTime(endUtc, settings.TimeZone);
-        }
-        else
-        {
-            var nowLocal = TimeZoneInfo.ConvertTime(nowUtc, settings.TimeZone);
-            baseStartLocal = CalculateNextOccurrenceLocal(
-                nowLocal, settings.DayOfWeek, settings.Hour, settings.Minute);
-        }
-
-        var queueWithSchedule = queue.Select((row, idx) =>
-        {
-            var startLocal = baseStartLocal.AddHours(idx * settings.DurationHours);
-            var endLocal = startLocal.AddHours(settings.DurationHours);
-            return new
-            {
-                row.weepaSongId,
-                row.song,
-                row.effect,
-                row.xId,
-                row.submitName,
-                row.scheduleOrder,
-                scheduledStart = startLocal.ToUniversalTime(),
-                scheduledEnd = endLocal.ToUniversalTime(),
-            };
-        }).ToList();
 
         return Ok(new
         {
@@ -490,7 +490,7 @@ public class AdminController : ControllerBase
                 durationHours = settings.DurationHours,
             },
             current,
-            queue = queueWithSchedule,
+            queue,
             past,
         });
     }
@@ -511,36 +511,44 @@ public class AdminController : ControllerBase
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
 
-        // 念の為「キュー対象」(承認済み かつ 未開催) の全件と渡された ID 集合を確認
-        var approvedIds = (await conn.QueryAsync<int>(new CommandDefinition(
-            """
-            SELECT s.weepa_song_id
-            FROM weepa_songs s
-            WHERE s.approval_status = 1
-              AND NOT EXISTS (
-                  SELECT 1 FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id
-              )
-            FOR UPDATE
-            """,
-            transaction: tx, cancellationToken: ct))).ToHashSet();
+        // 未来イベント (= キュー) 全件をロックして読み取り
+        var upcoming = (await conn.QueryAsync<(int weepaEventId, DateTime startDate, DateTime endDate)>(
+            new CommandDefinition(
+                """
+                SELECT weepa_event_id AS weepaEventId,
+                       start_date     AS startDate,
+                       end_date       AS endDate
+                FROM weepa_events
+                WHERE start_date > NOW()
+                ORDER BY start_date ASC
+                FOR UPDATE
+                """,
+                transaction: tx, cancellationToken: ct))).ToList();
 
-        if (request.Order.Length != approvedIds.Count
-            || request.Order.Any(id => !approvedIds.Contains(id)))
+        var ids = upcoming.Select(x => x.weepaEventId).ToHashSet();
+        if (request.Order.Length != ids.Count
+            || request.Order.Any(id => !ids.Contains(id)))
         {
             await tx.RollbackAsync(ct);
             return BadRequest(new
             {
-                message = "order に承認済みでない id が含まれているか、件数が一致しません",
-                expected = approvedIds.OrderBy(x => x).ToArray(),
+                message = "order に未来イベントでない id が含まれているか、件数が一致しません",
+                expected = ids.OrderBy(x => x).ToArray(),
                 got = request.Order,
             });
         }
 
+        // 現在の (start, end) スロット列を、新しい順序の event_id にあてがう
+        var slots = upcoming.Select(x => (x.startDate, x.endDate)).ToList();
         for (var i = 0; i < request.Order.Length; i++)
         {
             await conn.ExecuteAsync(new CommandDefinition(
-                "UPDATE weepa_songs SET schedule_order = @Order WHERE weepa_song_id = @Id",
-                new { Id = request.Order[i], Order = i + 1 },
+                """
+                UPDATE weepa_events
+                SET start_date = @Start, end_date = @End
+                WHERE weepa_event_id = @Id
+                """,
+                new { Id = request.Order[i], Start = slots[i].startDate, End = slots[i].endDate },
                 transaction: tx,
                 cancellationToken: ct));
         }
@@ -587,121 +595,6 @@ public class AdminController : ControllerBase
         }
 
         return Ok(new { message = "ok" });
-    }
-
-    [HttpPost("events/auto-weekly")]
-    public async Task<IActionResult> CreateWeeklyEventAutomatically(CancellationToken ct)
-    {
-        var authFailure = Authenticate();
-        if (authFailure is not null) return authFailure;
-
-        if (!TryGetAutoWeeklySettings(out var settings, out var settingsError))
-        {
-            return settingsError!;
-        }
-
-        var nowUtc = DateTimeOffset.UtcNow;
-        var nowLocal = TimeZoneInfo.ConvertTime(nowUtc, settings.TimeZone);
-
-        var startLocal = CalculateNextOccurrenceLocal(
-            nowLocal,
-            settings.DayOfWeek,
-            settings.Hour,
-            settings.Minute);
-
-        var startDate = startLocal.ToUniversalTime();
-        var endDate = startDate.AddHours(settings.DurationHours);
-
-        await using var conn = await _dataSource.OpenConnectionAsync(ct);
-        await using var tx = await conn.BeginTransactionAsync(ct);
-
-        var hasOverlap = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
-            """
-            SELECT EXISTS (
-                SELECT 1
-                FROM weepa_events
-                WHERE start_date < @EndDate
-                  AND end_date > @StartDate
-            )
-            """,
-            new
-            {
-                StartDate = startDate,
-                EndDate = endDate,
-            },
-            transaction: tx,
-            cancellationToken: ct));
-
-        if (hasOverlap)
-        {
-            await tx.RollbackAsync(ct);
-            return Conflict(new { message = "重複する開催期間のイベントが既に存在します" });
-        }
-
-        // 開催スケジュール先頭の楽曲を選出。「実施済み」状態は events に紐付いているかで判定する。
-        var weepaSongId = await conn.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
-            """
-            SELECT s.weepa_song_id
-            FROM weepa_songs s
-            WHERE s.approval_status = 1
-              AND NOT EXISTS (
-                  SELECT 1 FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id
-              )
-            ORDER BY s.schedule_order ASC NULLS LAST, s.weepa_song_id ASC
-            LIMIT 1
-            FOR UPDATE SKIP LOCKED
-            """,
-            transaction: tx,
-            cancellationToken: ct));
-
-        if (weepaSongId is null)
-        {
-            await tx.RollbackAsync(ct);
-            return Conflict(new { message = "承認済み楽曲が存在しないためイベントを作成できません" });
-        }
-
-        var eventId = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
-            """
-            INSERT INTO weepa_events (weepa_song_id, start_date, end_date)
-            VALUES (@WeepaSongId, @StartDate, @EndDate)
-            RETURNING weepa_event_id
-            """,
-            new
-            {
-                WeepaSongId = weepaSongId.Value,
-                StartDate = startDate,
-                EndDate = endDate,
-            },
-            transaction: tx,
-            cancellationToken: ct));
-
-        await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE weepa_songs SET schedule_order = NULL WHERE weepa_song_id = @Id",
-            new { Id = weepaSongId.Value },
-            transaction: tx,
-            cancellationToken: ct));
-
-        await tx.CommitAsync(ct);
-
-        return CreatedAtAction(
-            actionName: "Get",
-            controllerName: "Events",
-            routeValues: new { id = eventId },
-            value: new
-            {
-                weepaEventId = eventId,
-                weepaSongId = weepaSongId.Value,
-                startDate,
-                endDate,
-                schedule = new
-                {
-                    timezone = settings.TimeZone.Id,
-                    dayOfWeek = settings.DayOfWeek.ToString(),
-                    hour = settings.Hour,
-                    minute = settings.Minute,
-                    durationHours = settings.DurationHours,
-                },
-            });
     }
 
     private bool TryGetAutoWeeklySettings(
