@@ -300,10 +300,6 @@ function renderQueue(queue) {
         <td>${effectBadgeHtml(q.effect)}</td>
         <td>${escapeHtml(q.submitName)} (@${escapeHtml(q.xId)})</td>
         <td>${escapeHtml(ymd(q.startDate))}~${escapeHtml(ymd(q.endDate))}</td>
-        <td class="actions">
-          <button type="button" class="queue-up" data-event-id="${q.weepaEventId}" title="上に移動">↑</button>
-          <button type="button" class="queue-down" data-event-id="${q.weepaEventId}" title="下に移動">↓</button>
-        </td>
       </tr>
     `).join('');
     scheduleQueueEl.innerHTML = `
@@ -312,7 +308,7 @@ function renderQueue(queue) {
           <thead>
             <tr>
               <th>#</th><th>楽曲</th><th>譜面</th><th>選曲者名</th>
-              <th>開催期間</th><th>並替</th>
+              <th>開催期間</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -449,25 +445,6 @@ scheduleConfigForm.addEventListener('submit', async (ev) => {
         if (err.message === 'AUTH_REDIRECT') return;
         setInfo(err.message, 'ng');
     }
-});
-
-function moveQueueRow(eventId, dir) {
-    const tr = scheduleQueueEl.querySelector(`tr[data-event-id="${eventId}"]`);
-    if (!tr) return;
-    const sibling = dir === -1 ? tr.previousElementSibling : tr.nextElementSibling;
-    if (!sibling) return;
-    if (dir === -1) tr.parentNode.insertBefore(tr, sibling);
-    else tr.parentNode.insertBefore(sibling, tr);
-    renumberQueueRanks();
-}
-
-scheduleQueueEl.addEventListener('click', (ev) => {
-    const t = ev.target;
-    if (!(t instanceof HTMLButtonElement)) return;
-    const id = Number(t.dataset.eventId);
-    if (!id) return;
-    if (t.classList.contains('queue-up')) moveQueueRow(id, -1);
-    else if (t.classList.contains('queue-down')) moveQueueRow(id, 1);
 });
 
 reorderSaveBtn.addEventListener('click', async () => {
