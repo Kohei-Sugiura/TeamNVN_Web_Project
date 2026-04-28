@@ -631,9 +631,13 @@ public class AdminController : ControllerBase
             transaction: tx,
             cancellationToken: ct))).ToList();
 
+        // 開催の cadence は曜日ベースなので 1 週間 (168h) 固定。durationHours は
+        // 「開催が続く時間」のみを意味する (例: 165h ならイベント終了後3時間空けて
+        // 次回が同じ曜日同じ時刻に始まる)
+        const double WeekHours = 24.0 * 7.0;
         for (var i = 0; i < upcoming.Count; i++)
         {
-            var newStart = firstStartUtc.AddHours(i * settings.DurationHours);
+            var newStart = firstStartUtc.AddHours(i * WeekHours);
             var newEnd = newStart.AddHours(settings.DurationHours);
             await conn.ExecuteAsync(new CommandDefinition(
                 "UPDATE weepa_events SET start_date = @Start, end_date = @End WHERE weepa_event_id = @Id",
