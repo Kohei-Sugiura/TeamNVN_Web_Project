@@ -35,7 +35,7 @@ function isTallied(ev, now) {
 }
 
 function activeCard(ev) {
-  const url = `/score/?eventId=${encodeURIComponent(ev.weepaEventId)}`;
+  const url = `/weepa/score/?eventId=${encodeURIComponent(ev.weepaEventId)}`;
   return `
     <section class="weepa-status-card">
       <h3 class="weepa-status-title">現在開催中</h3>
@@ -54,7 +54,7 @@ function activeCard(ev) {
 function recentEntry(ev, now) {
   const tallied = isTallied(ev, now);
   const action = tallied
-    ? `<a class="event-link" href="/ranking/?eventId=${encodeURIComponent(ev.weepaEventId)}">ランキング詳細を見る</a>`
+    ? `<a class="event-link" href="/weepa/ranking/?eventId=${encodeURIComponent(ev.weepaEventId)}">ランキング詳細を見る</a>`
     : `<span class="weepa-pending">集計が完了するまでお待ちください</span>`;
   return `
     <div class="recent-event">

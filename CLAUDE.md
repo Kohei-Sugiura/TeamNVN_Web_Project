@@ -54,7 +54,7 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 | 楽曲名オートコンプリート (`GET /api/songs/search`) | **実装しない** | 毎週違う曲を提案するので既存曲選択はほぼ無い |
 | `pg_trgm` 拡張 / `idx_weepa_songs_name_trgm` | **残す** | 将来の管理者用「曲統合」機能向け |
 | 選曲提案は「今週の曲」 | **違う** | 将来の候補プールに積む。UI文言に「今週」「来週」等を入れない |
-| ランキング公開 | **集計完了後のみ** | 開催中イベントにはランキングへの導線を置かない。`/ranking/` は存在するが直URL経由のみ |
+| ランキング公開 | **集計完了後のみ** | 開催中イベントにはランキングへの導線を置かない。`/weepa/ranking/` は存在するが直URL経由のみ |
 | 集計完了の判定方法 | **未定** | Step 6 or 後工程で決定（候補: `end_date < NOW()` で自動 / 管理者が `tallied_at` を明示） |
 | `approval_status` の値設計 | **負値=終端（却下）／非負=前進パイプライン** | `-1=却下 / 0=未承認 / 1=承認済み`。「非却下」は `approval_status >= 0` で綺麗に書ける。songs/scores 両テーブル共通 |
 | 楽曲の「実施済み」状態 | **`approval_status=2` を実施済みとして追加** | イベント作成時（手動・auto-weekly 双方）で対象曲を 1→2 に遷移。auto-weekly の抽選対象は status=1 のみなので実施済みは再度選ばれない。スコア側には実施済み相当の状態は無い |
@@ -102,7 +102,7 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 |---|---|---|
 | 1 | 最小構成の3コンテナ疎通 (nginx/api/db) | ✅ |
 | 2 | DBスキーマ投入 + API から DB 接続 (Dapper + Npgsql) | ✅ |
-| 3 | 選曲提案機能（POST /api/songs + `/submit/`） | ✅ |
+| 3 | 選曲提案機能（POST /api/songs + `/weepa/submit/`） | ✅ |
 | 4 | イベント機能 + ランキング API + Team NVN トップ刷新 + SDVXテーマ | ✅ |
 | 5 | スコア投稿機能（multipart 画像アップロード付き） | ✅ |
 | 6 | **管理者画面と承認フロー** | ⏳ **次** |
@@ -171,10 +171,11 @@ Bot は本リポジトリとは別プロジェクトになる可能性あり。�
 │   └── Dockerfile
 ├── web/                      静的フロント（URLは拡張子レス、各ディレクトリの index.html を返す）
 │   ├── index.html            Team NVN ポータル ( / )
-│   ├── submit/index.html     楽曲投稿フォーム ( /submit/ )
-│   ├── score/index.html      スコア投稿フォーム ( /score/ )
-│   ├── ranking/index.html    ランキング（直URLのみ） ( /ranking/ )
-│   ├── history/index.html    開催履歴 ( /history/ )
+│   ├── weepa/                WeePA 関連の公開ページ。他イベントが追加されても干渉しないよう /weepa/ 配下に集約
+│   │   ├── submit/index.html   楽曲投稿フォーム ( /weepa/submit/ )
+│   │   ├── score/index.html    スコア投稿フォーム ( /weepa/score/ )
+│   │   ├── ranking/index.html  ランキング（直URLのみ） ( /weepa/ranking/ )
+│   │   └── history/index.html  開催履歴 ( /weepa/history/ )
 │   ├── admin/                管理画面（要 Basic 認証）
 │   │   ├── index.html        未承認の選曲提案 / スコア承認 ( /admin/ )
 │   │   ├── login/index.html  管理者ログイン ( /admin/login/ )

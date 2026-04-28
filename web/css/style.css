@@ -106,7 +106,7 @@ a:hover {
   letter-spacing: 0.08em;
 }
 
-/* Generic page h1 (/submit/ 等、site-header 外の h1) */
+/* Generic page h1 (/weepa/submit/ 等、site-header 外の h1) */
 .container>h1 {
   font-size: 1.8rem;
   letter-spacing: 0.08em;

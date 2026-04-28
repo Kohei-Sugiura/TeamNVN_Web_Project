@@ -41,7 +41,7 @@ function statusCell(s, now) {
     if (state === 'active') return '<span class="status-active">開催中</span>';
     if (state === 'tallying') return '<span class="status-tallying">集計中</span>';
     if (state === 'finished' && s.weepaEventId) {
-        return `<a class="status-link" href="/ranking/?eventId=${encodeURIComponent(s.weepaEventId)}">結果を表示</a>`;
+        return `<a class="status-link" href="/weepa/ranking/?eventId=${encodeURIComponent(s.weepaEventId)}">結果を表示</a>`;
     }
     return '<span class="status-tallying">-</span>';
 }
