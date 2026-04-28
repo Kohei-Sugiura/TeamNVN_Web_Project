@@ -99,26 +99,25 @@ public class AdminController : ControllerBase
         }
 
         // 承認時に開催枠 (event) を自動生成。
-        // start = 既存全イベントの最遅 end_date の続き、無ければ次回の cron テンプレ枠
+        // 起点 = 既存全イベントの最遅 end_date が未来ならそれ、そうでなければ NOW。
+        // そこから「現在のスケジューリング設定 (曜日/時刻) における直後の発生時刻」
+        // を計算して新イベントの start にする。end = start + durationHours。
+        // これにより手動でイベント日時が崩されていても、新規承認は必ず設定通り
+        // のスロットに整列される。
         var lastEnd = await conn.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
             "SELECT MAX(end_date) FROM weepa_events",
             transaction: tx,
             cancellationToken: ct));
 
         var nowUtc = DateTimeOffset.UtcNow;
-        DateTimeOffset start;
-        if (lastEnd.HasValue && new DateTimeOffset(lastEnd.Value, TimeSpan.Zero) > nowUtc)
-        {
-            start = new DateTimeOffset(lastEnd.Value, TimeSpan.Zero);
-        }
-        else
-        {
-            var nowLocal = TimeZoneInfo.ConvertTime(nowUtc, settings.TimeZone);
-            var startLocal = CalculateNextOccurrenceLocal(
-                nowLocal, settings.DayOfWeek, settings.Hour, settings.Minute);
-            start = startLocal.ToUniversalTime();
-        }
+        DateTimeOffset anchor = lastEnd.HasValue && new DateTimeOffset(lastEnd.Value, TimeSpan.Zero) > nowUtc
+            ? new DateTimeOffset(lastEnd.Value, TimeSpan.Zero)
+            : nowUtc;
 
+        var anchorLocal = TimeZoneInfo.ConvertTime(anchor, settings.TimeZone);
+        var startLocal = CalculateNextOccurrenceLocal(
+            anchorLocal, settings.DayOfWeek, settings.Hour, settings.Minute);
+        var start = startLocal.ToUniversalTime();
         var end = start.AddHours(settings.DurationHours);
 
         await conn.ExecuteAsync(new CommandDefinition(

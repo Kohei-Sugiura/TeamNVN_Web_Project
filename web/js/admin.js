@@ -240,6 +240,17 @@ function ymd(iso) {
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function ymdHm(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${y}/${m}/${day} ${h}:${mi}`;
+}
+
 function renderCurrentEvent(current) {
     if (!current) {
         scheduleCurrentEl.innerHTML = '<p class="empty">現在開催中のイベントはありません。</p>';
@@ -299,7 +310,7 @@ function renderQueue(queue) {
         <td>${escapeHtml(q.song)}</td>
         <td>${effectBadgeHtml(q.effect)}</td>
         <td>${escapeHtml(q.submitName)} (@${escapeHtml(q.xId)})</td>
-        <td>${escapeHtml(ymd(q.startDate))}~${escapeHtml(ymd(q.endDate))}</td>
+        <td>${escapeHtml(ymdHm(q.startDate))}<br>~ ${escapeHtml(ymdHm(q.endDate))}</td>
       </tr>
     `).join('');
     scheduleQueueEl.innerHTML = `
