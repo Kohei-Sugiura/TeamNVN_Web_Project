@@ -328,20 +328,22 @@ function renderPublishList(past) {
     }
     const rows = past.map((p) => {
         const published = !!p.talliedAt;
-        const statusCell = published
-            ? `<span class="status-active">公開済</span>`
-            : `<span class="status-tallying">未公開</span>`;
-        const actionCell = published
-            ? `<button type="button" class="event-unpublish" data-event-id="${p.weepaEventId}">公開取消</button>`
-            : `<button type="button" class="event-publish" data-event-id="${p.weepaEventId}">公開</button>`;
+        const stateLabel = published
+            ? `<span class="status-active">公開中</span>`
+            : `<span class="status-tallying">非公開</span>`;
         return `
           <tr>
             <td>${escapeHtml(p.song)}</td>
             <td>${effectBadgeHtml(p.effect)}</td>
             <td>${escapeHtml(p.submitName)}</td>
             <td>${escapeHtml(ymd(p.startDate))}~${escapeHtml(ymd(p.endDate))}</td>
-            <td class="status-cell">${statusCell}</td>
-            <td class="actions">${actionCell}</td>
+            <td class="status-cell">
+              <label class="toggle-switch" title="${published ? '公開中 → クリックで非公開' : '非公開 → クリックで公開'}">
+                <input type="checkbox" class="publish-toggle" data-event-id="${p.weepaEventId}"${published ? ' checked' : ''}>
+                <span class="toggle-slider" aria-hidden="true"></span>
+              </label>
+              <span class="toggle-label">${stateLabel}</span>
+            </td>
           </tr>
         `;
     }).join('');
@@ -349,7 +351,7 @@ function renderPublishList(past) {
       <div class="db-table-wrap">
         <table class="ranking-table">
           <thead>
-            <tr><th>楽曲</th><th>譜面</th><th>選曲者</th><th>開催期間</th><th class="status-cell">公開状態</th><th>操作</th></tr>
+            <tr><th>楽曲</th><th>譜面</th><th>選曲者</th><th>開催期間</th><th class="status-cell">公開</th></tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
@@ -453,19 +455,20 @@ reorderSaveBtn.addEventListener('click', async () => {
     }
 });
 
-publishListEl.addEventListener('click', async (ev) => {
+publishListEl.addEventListener('change', async (ev) => {
     const t = ev.target;
-    if (!(t instanceof HTMLButtonElement)) return;
+    if (!(t instanceof HTMLInputElement) || !t.classList.contains('publish-toggle')) return;
     const id = t.dataset.eventId;
     if (!id) return;
-    const isPublish = t.classList.contains('event-publish');
-    const isUnpublish = t.classList.contains('event-unpublish');
-    if (!isPublish && !isUnpublish) return;
-    const verb = isPublish ? '公開' : '公開取消';
-    if (!confirm(`event_id=${id} を${verb}します。よろしいですか？`)) return;
+    const wantPublish = t.checked;
+    const verb = wantPublish ? '公開' : '非公開化';
+    if (!confirm(`event_id=${id} を${verb}します。よろしいですか？`)) {
+        t.checked = !wantPublish; // revert UI
+        return;
+    }
     t.disabled = true;
     try {
-        await adminFetch(`/api/admin/events/${id}/${isPublish ? 'publish' : 'unpublish'}`, {
+        await adminFetch(`/api/admin/events/${id}/${wantPublish ? 'publish' : 'unpublish'}`, {
             method: 'POST',
             body: '{}',
         });
@@ -473,6 +476,7 @@ publishListEl.addEventListener('click', async (ev) => {
         await loadSchedule();
     } catch (err) {
         if (err.message === 'AUTH_REDIRECT') return;
+        t.checked = !wantPublish; // revert UI on failure
         setInfo(err.message, 'ng');
     } finally {
         t.disabled = false;
