@@ -355,6 +355,30 @@ public class AdminController : ControllerBase
             value: new { weepaEventId = eventId });
     }
 
+    [HttpGet("schedule")]
+    public IActionResult GetSchedule()
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        if (!TryGetAutoWeeklySettings(out var settings, out var settingsError))
+        {
+            return settingsError!;
+        }
+
+        var triggerCron = _configuration["AUTO_WEEKLY_TRIGGER_CRON"] ?? "5 0 * * *";
+
+        return Ok(new
+        {
+            timezone = settings.TimeZone.Id,
+            dayOfWeek = settings.DayOfWeek.ToString(),
+            hour = settings.Hour,
+            minute = settings.Minute,
+            durationHours = settings.DurationHours,
+            triggerCron,
+        });
+    }
+
     [HttpPost("events/auto-weekly")]
     public async Task<IActionResult> CreateWeeklyEventAutomatically(CancellationToken ct)
     {
