@@ -28,7 +28,7 @@ function promptAdminCreds() {
     return creds;
 }
 
-const ADMIN_LOGIN_PATH = '/admin-login.html';
+const ADMIN_LOGIN_PATH = '/admin/login/';
 
 function redirectToLogin() {
     const ret = encodeURIComponent(window.location.pathname + window.location.search);
@@ -131,13 +131,13 @@ function statusSelectOptions(currentValue, withSongImplemented) {
 
 const ADMIN_NAV = `
   <p class="admin-nav">
-    <a href="/admin.html">未承認</a>
+    <a href="/admin/">未承認</a>
     <span class="sep">|</span>
-    <a href="/admin-songs.html">楽曲</a>
+    <a href="/admin/songs/">楽曲</a>
     <span class="sep">|</span>
-    <a href="/admin-events.html">イベント</a>
+    <a href="/admin/events/">イベント</a>
     <span class="sep">|</span>
-    <a href="/admin-scores.html">スコア</a>
+    <a href="/admin/scores/">スコア</a>
     <span class="sep">|</span>
     <a href="#" id="admin-logout-link">ログアウト</a>
   </p>

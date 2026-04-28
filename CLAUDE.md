@@ -54,7 +54,7 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 | 楽曲名オートコンプリート (`GET /api/songs/search`) | **実装しない** | 毎週違う曲を提案するので既存曲選択はほぼ無い |
 | `pg_trgm` 拡張 / `idx_weepa_songs_name_trgm` | **残す** | 将来の管理者用「曲統合」機能向け |
 | 選曲提案は「今週の曲」 | **違う** | 将来の候補プールに積む。UI文言に「今週」「来週」等を入れない |
-| ランキング公開 | **集計完了後のみ** | 開催中イベントにはランキングへの導線を置かない。`/ranking.html` は存在するが直URL経由のみ |
+| ランキング公開 | **集計完了後のみ** | 開催中イベントにはランキングへの導線を置かない。`/ranking/` は存在するが直URL経由のみ |
 | 集計完了の判定方法 | **未定** | Step 6 or 後工程で決定（候補: `end_date < NOW()` で自動 / 管理者が `tallied_at` を明示） |
 | `approval_status` の値設計 | **負値=終端（却下）／非負=前進パイプライン** | `-1=却下 / 0=未承認 / 1=承認済み`。「非却下」は `approval_status >= 0` で綺麗に書ける。songs/scores 両テーブル共通 |
 | 楽曲の「実施済み」状態 | **`approval_status=2` を実施済みとして追加** | イベント作成時（手動・auto-weekly 双方）で対象曲を 1→2 に遷移。auto-weekly の抽選対象は status=1 のみなので実施済みは再度選ばれない。スコア側には実施済み相当の状態は無い |
@@ -65,7 +65,7 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 
 - NG: 「管理者の承認後に掲載されます」「審査中」「承認をお待ちください」
 - OK: 「投稿を受け付けました」「投稿が完了しました」
-- 管理者画面 (`/admin.html` 等) 内では「承認」「却下」等の用語OK
+- 管理者画面 (`/admin/` 等) 内では「承認」「却下」等の用語OK
 
 ### 2. 全ページ モバイル対応必須
 
@@ -102,7 +102,7 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 |---|---|---|
 | 1 | 最小構成の3コンテナ疎通 (nginx/api/db) | ✅ |
 | 2 | DBスキーマ投入 + API から DB 接続 (Dapper + Npgsql) | ✅ |
-| 3 | 選曲提案機能（POST /api/songs + `/submit.html`） | ✅ |
+| 3 | 選曲提案機能（POST /api/songs + `/submit/`） | ✅ |
 | 4 | イベント機能 + ランキング API + Team NVN トップ刷新 + SDVXテーマ | ✅ |
 | 5 | スコア投稿機能（multipart 画像アップロード付き） | ✅ |
 | 6 | **管理者画面と承認フロー** | ⏳ **次** |
@@ -110,7 +110,7 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 
 ## Step 6 のスコープ（仕様書準拠 + 将来を見据えた調整）
 
-仕様書の Step 6 は Web 管理画面ベース。**まず `admin.html` だけで承認運用が完結すること** を最優先で仕上げる。
+仕様書の Step 6 は Web 管理画面ベース。**まず `/admin/` だけで承認運用が完結すること** を最優先で仕上げる。
 Discord Bot 連携は将来計画として残すが、HTML 側の運用が安定稼働するのを待って着手する（2026-04-24 決定）。
 ただし API 設計は Discord Bot からも後から叩ける純粋な REST のまま維持し、HTML 専用の仕様は混ぜない。
 
@@ -124,7 +124,7 @@ Discord Bot 連携は将来計画として残すが、HTML 側の運用が安定
 - 管理者のスコア修正フロー: 画像と投稿値がズレていれば **「修正して承認」で修正値を渡す** → 承認扱いでランキング対象
 - 承認時: pending 画像を物理削除
 - 却下時: 画像を一定期間保持（将来のバッチ削除）
-- `admin.html`: 未承認リスト + 承認/却下ボタン + 却下時のスコア修正UI。実運用できる品質に仕上げる
+- `/admin/`: 未承認リスト + 承認/却下ボタン + 却下時のスコア修正UI。実運用できる品質に仕上げる
 
 ## 将来計画（Step 8 以降の構想）
 
@@ -151,9 +151,9 @@ Bot は本リポジトリとは別プロジェクトになる可能性あり。�
 
 - Ubuntu 22.04.5 LTS / x86_64
 - Docker + Docker Compose 済み
-- `.env` はサーバー上 `~/weepa/.env`（git管理外、権限 600）
+- リポジトリクローン先: `~/workspace/web`（＝本リポジトリ。開発も本番もここで完結）
+- `.env` は `~/workspace/web/.env`（git管理外）
 - 画像 uploads は Docker 名前付きボリューム `uploads` に保存（`/app/uploads/pending/{event_id}/...`）
-- リポジトリクローン先: `~/weepa`
 - 80 番公開中（IP 直打ち段階）
 
 ## ディレクトリ
@@ -169,13 +169,20 @@ Bot は本リポジトリとは別プロジェクトになる可能性あり。�
 │   ├── Program.cs            NpgsqlDataSource をDI
 │   ├── Weepa.Api.csproj
 │   └── Dockerfile
-├── web/                      静的フロント
-│   ├── index.html            Team NVN ポータル
-│   ├── submit.html           楽曲投稿フォーム
-│   ├── score.html            スコア投稿フォーム
-│   ├── ranking.html          ランキング（直URLのみ）
+├── web/                      静的フロント（URLは拡張子レス、各ディレクトリの index.html を返す）
+│   ├── index.html            Team NVN ポータル ( / )
+│   ├── submit/index.html     楽曲投稿フォーム ( /submit/ )
+│   ├── score/index.html      スコア投稿フォーム ( /score/ )
+│   ├── ranking/index.html    ランキング（直URLのみ） ( /ranking/ )
+│   ├── history/index.html    開催履歴 ( /history/ )
+│   ├── admin/                管理画面（要 Basic 認証）
+│   │   ├── index.html        未承認の選曲提案 / スコア承認 ( /admin/ )
+│   │   ├── login/index.html  管理者ログイン ( /admin/login/ )
+│   │   ├── songs/index.html  DB管理 楽曲 ( /admin/songs/ )
+│   │   ├── events/index.html DB管理 イベント ( /admin/events/ )
+│   │   └── scores/index.html DB管理 スコア ( /admin/scores/ )
 │   ├── css/style.css         SDVX風ネオンテーマ + モバイル対応
-│   └── js/                   main / submit / score / ranking
+│   └── js/                   main / submit / score / ranking / history / admin / admin-common / admin-login / admin-songs / admin-events / admin-scores
 ├── nginx/conf.d/default.conf
 ├── db/init/01_schema.sql     初回起動時のみ実行される
 ├── deploy/                   将来のデプロイスクリプト置き場（空）

@@ -1,5 +1,5 @@
 const params = new URLSearchParams(window.location.search);
-const returnUrl = params.get('return') || '/admin.html';
+const returnUrl = params.get('return') || '/admin/';
 
 const form = document.getElementById('login-form');
 const userInput = document.getElementById('user');

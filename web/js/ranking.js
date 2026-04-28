@@ -89,7 +89,7 @@ function renderPastList(events) {
   }
   const rows = events.map((ev) => `
     <tr>
-      <td class="name"><a href="/ranking.html?eventId=${encodeURIComponent(ev.weepaEventId)}">${escapeHtml(ev.song)}</a></td>
+      <td class="name"><a href="/ranking/?eventId=${encodeURIComponent(ev.weepaEventId)}">${escapeHtml(ev.song)}</a></td>
       <td><span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span></td>
       <td class="ex">${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</td>
     </tr>
