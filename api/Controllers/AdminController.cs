@@ -69,13 +69,15 @@ public class AdminController : ControllerBase
         var song = string.IsNullOrWhiteSpace(request?.Song) ? null : request.Song.Trim();
         var effect = string.IsNullOrWhiteSpace(request?.Effect) ? null : request.Effect;
 
-        if (!TryGetAutoWeeklySettings(out var settings, out var settingsError))
-        {
-            return settingsError!;
-        }
-
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var (settings, settingsError) = await LoadScheduleSettingsAsync(conn, ct, tx);
+        if (settingsError is not null)
+        {
+            await tx.RollbackAsync(ct);
+            return settingsError;
+        }
 
         var affected = await conn.ExecuteAsync(new CommandDefinition(
             """
@@ -411,12 +413,13 @@ public class AdminController : ControllerBase
         var authFailure = Authenticate();
         if (authFailure is not null) return authFailure;
 
-        if (!TryGetAutoWeeklySettings(out var settings, out var settingsError))
-        {
-            return settingsError!;
-        }
-
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        var (settings, settingsError) = await LoadScheduleSettingsAsync(conn, ct);
+        if (settingsError is not null)
+        {
+            return settingsError;
+        }
 
         // 現在開催中のイベント
         var current = await conn.QuerySingleOrDefaultAsync(new CommandDefinition(
@@ -557,6 +560,93 @@ public class AdminController : ControllerBase
         return Ok(new { message = "ok" });
     }
 
+    [HttpPut("schedule/config")]
+    public async Task<IActionResult> UpdateScheduleConfig(
+        [FromBody] ScheduleConfigRequest request,
+        CancellationToken ct)
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        if (request is null
+            || request.DayOfWeek is < 0 or > 6
+            || request.Hour is < 0 or > 23
+            || request.Minute is < 0 or > 59
+            || request.DurationHours <= 0)
+        {
+            return BadRequest(new
+            {
+                message = "値が範囲外です。dayOfWeek=0..6, hour=0..23, minute=0..59, durationHours>=1",
+            });
+        }
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        // 設定を更新
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE weepa_schedule_config
+            SET day_of_week    = @DayOfWeek,
+                hour           = @Hour,
+                minute         = @Minute,
+                duration_hours = @DurationHours
+            WHERE id = 1
+            """,
+            new
+            {
+                request.DayOfWeek,
+                request.Hour,
+                request.Minute,
+                request.DurationHours,
+            },
+            transaction: tx,
+            cancellationToken: ct));
+
+        // 新しい設定で未来イベント (queue) の start/end を再計算
+        var (settings, settingsError) = await LoadScheduleSettingsAsync(conn, ct, tx);
+        if (settingsError is not null)
+        {
+            await tx.RollbackAsync(ct);
+            return settingsError;
+        }
+
+        // 起点 = 現在開催中の end_date があればそれ、なければ NOW
+        var currentEnd = await conn.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
+            "SELECT end_date FROM weepa_events WHERE start_date <= NOW() AND end_date > NOW() ORDER BY end_date DESC LIMIT 1",
+            transaction: tx,
+            cancellationToken: ct));
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        DateTimeOffset anchor = currentEnd.HasValue
+            ? new DateTimeOffset(currentEnd.Value, TimeSpan.Zero)
+            : nowUtc;
+
+        var anchorLocal = TimeZoneInfo.ConvertTime(anchor, settings.TimeZone);
+        var firstStartLocal = CalculateNextOccurrenceLocal(
+            anchorLocal, settings.DayOfWeek, settings.Hour, settings.Minute);
+        var firstStartUtc = firstStartLocal.ToUniversalTime();
+
+        var upcoming = (await conn.QueryAsync<int>(new CommandDefinition(
+            "SELECT weepa_event_id FROM weepa_events WHERE start_date > NOW() ORDER BY start_date ASC FOR UPDATE",
+            transaction: tx,
+            cancellationToken: ct))).ToList();
+
+        for (var i = 0; i < upcoming.Count; i++)
+        {
+            var newStart = firstStartUtc.AddHours(i * settings.DurationHours);
+            var newEnd = newStart.AddHours(settings.DurationHours);
+            await conn.ExecuteAsync(new CommandDefinition(
+                "UPDATE weepa_events SET start_date = @Start, end_date = @End WHERE weepa_event_id = @Id",
+                new { Id = upcoming[i], Start = newStart, End = newEnd },
+                transaction: tx,
+                cancellationToken: ct));
+        }
+
+        await tx.CommitAsync(ct);
+        return Ok(new { message = "ok", recomputed = upcoming.Count });
+    }
+
     [HttpPost("events/{id:int}/publish")]
     public async Task<IActionResult> PublishEvent(int id, CancellationToken ct)
     {
@@ -597,88 +687,69 @@ public class AdminController : ControllerBase
         return Ok(new { message = "ok" });
     }
 
-    private bool TryGetAutoWeeklySettings(
-        out AutoWeeklySettings settings,
-        out IActionResult? error)
+    private async Task<(AutoWeeklySettings settings, IActionResult? error)> LoadScheduleSettingsAsync(
+        Npgsql.NpgsqlConnection conn,
+        CancellationToken ct,
+        Npgsql.NpgsqlTransaction? tx = null)
     {
-        var timezoneId = _configuration["AUTO_WEEKLY_TIMEZONE"];
-        if (string.IsNullOrWhiteSpace(timezoneId))
+        var row = await conn.QuerySingleOrDefaultAsync<(short DayOfWeek, short Hour, short Minute, int DurationHours, string Timezone)?>(
+            new CommandDefinition(
+                """
+                SELECT day_of_week AS DayOfWeek,
+                       hour        AS Hour,
+                       minute      AS Minute,
+                       duration_hours AS DurationHours,
+                       timezone    AS Timezone
+                FROM weepa_schedule_config
+                WHERE id = 1
+                """,
+                transaction: tx,
+                cancellationToken: ct));
+
+        if (row is null)
         {
-            timezoneId = "Asia/Tokyo";
+            return (default, StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { message = "weepa_schedule_config の初期行が存在しません" }));
         }
 
         TimeZoneInfo timezone;
         try
         {
-            timezone = TimeZoneInfo.FindSystemTimeZoneById(timezoneId);
+            timezone = TimeZoneInfo.FindSystemTimeZoneById(row.Value.Timezone);
+        }
+        catch
+        {
+            return (default, ValidationProblemFromMessage(
+                "timezone", $"タイムゾーン '{row.Value.Timezone}' は無効です"));
+        }
+
+        var settings = new AutoWeeklySettings(
+            timezone,
+            (DayOfWeek)row.Value.DayOfWeek,
+            row.Value.Hour,
+            row.Value.Minute,
+            row.Value.DurationHours);
+        return (settings, null);
+    }
+
+    private bool TryGetAutoWeeklySettings(
+        out AutoWeeklySettings settings,
+        out IActionResult? error)
+    {
+        // フォールバック用 (起動直後に DB が無い等の状況)。通常は LoadScheduleSettingsAsync を使う。
+        TimeZoneInfo timezone;
+        try
+        {
+            timezone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo");
         }
         catch
         {
             settings = default;
-            error = ValidationProblemFromMessage(
-                "AUTO_WEEKLY_TIMEZONE",
-                $"タイムゾーン '{timezoneId}' は無効です");
+            error = ValidationProblemFromMessage("timezone", "タイムゾーンが取得できません");
             return false;
         }
 
-        var dayValue = _configuration["AUTO_WEEKLY_DAY_OF_WEEK"];
-        if (string.IsNullOrWhiteSpace(dayValue))
-        {
-            dayValue = "Wednesday";
-        }
-
-        if (!TryParseDayOfWeek(dayValue, out var dayOfWeek))
-        {
-            settings = default;
-            error = ValidationProblemFromMessage(
-                "AUTO_WEEKLY_DAY_OF_WEEK",
-                "曜日は 0-6 または Sunday..Saturday で指定してください");
-            return false;
-        }
-
-        if (!int.TryParse(_configuration["AUTO_WEEKLY_HOUR"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var hour))
-        {
-            hour = 21;
-        }
-
-        if (!int.TryParse(_configuration["AUTO_WEEKLY_MINUTE"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var minute))
-        {
-            minute = 0;
-        }
-
-        if (!int.TryParse(_configuration["AUTO_WEEKLY_DURATION_HOURS"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var durationHours))
-        {
-            durationHours = 168;
-        }
-
-        if (hour is < 0 or > 23)
-        {
-            settings = default;
-            error = ValidationProblemFromMessage(
-                "AUTO_WEEKLY_HOUR",
-                "時間は 0〜23 の範囲で指定してください");
-            return false;
-        }
-
-        if (minute is < 0 or > 59)
-        {
-            settings = default;
-            error = ValidationProblemFromMessage(
-                "AUTO_WEEKLY_MINUTE",
-                "分は 0〜59 の範囲で指定してください");
-            return false;
-        }
-
-        if (durationHours <= 0)
-        {
-            settings = default;
-            error = ValidationProblemFromMessage(
-                "AUTO_WEEKLY_DURATION_HOURS",
-                "期間は 1 以上の時間で指定してください");
-            return false;
-        }
-
-        settings = new AutoWeeklySettings(timezone, dayOfWeek, hour, minute, durationHours);
+        settings = new AutoWeeklySettings(timezone, DayOfWeek.Wednesday, 21, 0, 168);
         error = null;
         return true;
     }

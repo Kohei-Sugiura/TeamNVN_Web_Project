@@ -18,6 +18,7 @@
             <button type="button" data-tab="songs" class="active">楽曲承認</button>
             <button type="button" data-tab="scores">スコア承認</button>
             <button type="button" data-tab="schedule">開催スケジュール</button>
+            <button type="button" data-tab="publish">公開設定</button>
         </nav>
 
         <div class="form-actions">
@@ -54,14 +55,42 @@
                 <button type="button" id="reorder-save-btn">順番を保存</button>
             </div>
 
-            <h2 style="margin-top:24px;">過去のイベント</h2>
-            <p class="hint">end_date を過ぎたイベント。「公開」を押すと結果がランキング詳細ページから見られるようになります。</p>
-            <div id="schedule-past">
-                <p class="loading">読み込み中...</p>
-            </div>
+            <h2 style="margin-top:24px;">スケジューリング設定</h2>
+            <p class="hint">開催曜日 / 開始時刻 / 開催期間 を変更できます。保存すると、未来のイベント (キュー) の start/end が新設定に合わせて再計算されます。</p>
+            <form id="schedule-config-form" class="form">
+                <div class="admin-edit-fields">
+                    <label>開催曜日
+                        <select id="cfg-day-of-week" name="dayOfWeek">
+                            <option value="0">日曜</option>
+                            <option value="1">月曜</option>
+                            <option value="2">火曜</option>
+                            <option value="3">水曜</option>
+                            <option value="4">木曜</option>
+                            <option value="5">金曜</option>
+                            <option value="6">土曜</option>
+                        </select>
+                    </label>
+                    <label>開始時 (0-23)
+                        <input type="number" id="cfg-hour" name="hour" min="0" max="23">
+                    </label>
+                    <label>開始分 (0-59)
+                        <input type="number" id="cfg-minute" name="minute" min="0" max="59">
+                    </label>
+                    <label>開催期間 (時間)
+                        <input type="number" id="cfg-duration" name="durationHours" min="1">
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit">保存 (Queue 再計算)</button>
+                </div>
+            </form>
+            <p class="hint" id="schedule-config-tz"></p>
+        </section>
 
-            <h2 style="margin-top:24px;">自動生成設定</h2>
-            <div id="schedule-config">
+        <section class="event-card admin-tab-panel" data-tab="publish" hidden>
+            <h2>結果公開の切り替え</h2>
+            <p class="hint">end_date を過ぎたイベントの結果を、ランキング詳細ページから閲覧可能にする/非公開に戻す操作を行います。</p>
+            <div id="publish-list">
                 <p class="loading">読み込み中...</p>
             </div>
         </section>

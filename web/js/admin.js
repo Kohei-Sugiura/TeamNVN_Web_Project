@@ -215,8 +215,13 @@ async function onScoreAction(target) {
 
 const scheduleCurrentEl = document.getElementById('schedule-current');
 const scheduleQueueEl = document.getElementById('schedule-queue');
-const schedulePastEl = document.getElementById('schedule-past');
-const scheduleConfigEl = document.getElementById('schedule-config');
+const publishListEl = document.getElementById('publish-list');
+const scheduleConfigForm = document.getElementById('schedule-config-form');
+const scheduleConfigTzEl = document.getElementById('schedule-config-tz');
+const cfgDayEl = document.getElementById('cfg-day-of-week');
+const cfgHourEl = document.getElementById('cfg-hour');
+const cfgMinuteEl = document.getElementById('cfg-minute');
+const cfgDurationEl = document.getElementById('cfg-duration');
 const reorderSaveBtn = document.getElementById('reorder-save-btn');
 
 const DAY_OF_WEEK_LABEL = {
@@ -316,9 +321,9 @@ function renderQueue(queue) {
     `;
 }
 
-function renderPast(past) {
+function renderPublishList(past) {
     if (!past.length) {
-        schedulePastEl.innerHTML = '<p class="empty">過去のイベントはまだありません。</p>';
+        publishListEl.innerHTML = '<p class="empty">過去のイベントはまだありません。</p>';
         return;
     }
     const rows = past.map((p) => {
@@ -340,7 +345,7 @@ function renderPast(past) {
           </tr>
         `;
     }).join('');
-    schedulePastEl.innerHTML = `
+    publishListEl.innerHTML = `
       <div class="db-table-wrap">
         <table class="ranking-table">
           <thead>
@@ -352,40 +357,59 @@ function renderPast(past) {
     `;
 }
 
-function renderConfig(cfg) {
-    const dow = DAY_OF_WEEK_LABEL[cfg.dayOfWeek] ?? cfg.dayOfWeek;
-    const time = `${String(cfg.hour).padStart(2, '0')}:${String(cfg.minute).padStart(2, '0')}`;
-    scheduleConfigEl.innerHTML = `
-      <dl class="schedule-info">
-        <dt>タイムゾーン</dt><dd>${escapeHtml(cfg.timezone)}</dd>
-        <dt>開催曜日</dt>     <dd>${escapeHtml(dow)}</dd>
-        <dt>開始時刻</dt>     <dd>${escapeHtml(time)}</dd>
-        <dt>開催期間</dt>     <dd>${cfg.durationHours} 時間 (= ${(cfg.durationHours / 24).toFixed(1)} 日)</dd>
-      </dl>
-      <p class="hint">予定枠の計算に使われるテンプレート設定です。実際のイベント作成は管理者が手動で行います（「次回イベントを生成」ボタン or DB管理）。</p>
-    `;
+function fillScheduleConfigForm(cfg) {
+    cfgDayEl.value = String(
+        Object.entries(DAY_OF_WEEK_LABEL).findIndex(([k]) => k === cfg.dayOfWeek)
+    );
+    // findIndex の代わりに英語名→数値マップで安定化
+    const dowIndex = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+    cfgDayEl.value = String(dowIndex[cfg.dayOfWeek] ?? 3);
+    cfgHourEl.value = String(cfg.hour);
+    cfgMinuteEl.value = String(cfg.minute);
+    cfgDurationEl.value = String(cfg.durationHours);
+    scheduleConfigTzEl.textContent = `タイムゾーン: ${cfg.timezone}（変更は .env で対応）`;
 }
 
 async function loadSchedule() {
     scheduleCurrentEl.innerHTML = '<p class="loading">読み込み中...</p>';
     scheduleQueueEl.innerHTML = '<p class="loading">読み込み中...</p>';
-    schedulePastEl.innerHTML = '<p class="loading">読み込み中...</p>';
-    scheduleConfigEl.innerHTML = '<p class="loading">読み込み中...</p>';
+    publishListEl.innerHTML = '<p class="loading">読み込み中...</p>';
     try {
         const data = await adminFetch('/api/admin/schedule');
         renderCurrentEvent(data.current);
         renderQueue(data.queue || []);
-        renderPast(data.past || []);
-        renderConfig(data.config);
+        renderPublishList(data.past || []);
+        fillScheduleConfigForm(data.config);
     } catch (err) {
         if (err.message === 'AUTH_REDIRECT') return;
         const msg = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
         scheduleCurrentEl.innerHTML = msg;
         scheduleQueueEl.innerHTML = '';
-        schedulePastEl.innerHTML = '';
-        scheduleConfigEl.innerHTML = '';
+        publishListEl.innerHTML = '';
     }
 }
+
+scheduleConfigForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const payload = {
+        dayOfWeek: Number(cfgDayEl.value),
+        hour: Number(cfgHourEl.value),
+        minute: Number(cfgMinuteEl.value),
+        durationHours: Number(cfgDurationEl.value),
+    };
+    if (!confirm('スケジューリング設定を保存します。未来イベントの start/end が再計算されますが、よろしいですか？')) return;
+    try {
+        const result = await adminFetch('/api/admin/schedule/config', {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+        setInfo(`スケジュール設定を保存しました (${result.recomputed} 件のイベントを再計算)。`, 'ok');
+        await loadSchedule();
+    } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
+        setInfo(err.message, 'ng');
+    }
+});
 
 function moveQueueRow(eventId, dir) {
     const tr = scheduleQueueEl.querySelector(`tr[data-event-id="${eventId}"]`);
@@ -429,7 +453,7 @@ reorderSaveBtn.addEventListener('click', async () => {
     }
 });
 
-schedulePastEl.addEventListener('click', async (ev) => {
+publishListEl.addEventListener('click', async (ev) => {
     const t = ev.target;
     if (!(t instanceof HTMLButtonElement)) return;
     const id = t.dataset.eventId;
@@ -470,7 +494,7 @@ function selectTab(tab) {
     panels.forEach((p) => {
         p.hidden = p.dataset.tab !== tab;
     });
-    if (tab === 'schedule') loadSchedule();
+    if (tab === 'schedule' || tab === 'publish') loadSchedule();
     if (history.replaceState) {
         const url = new URL(window.location.href);
         url.searchParams.set('tab', tab);
@@ -490,9 +514,9 @@ tabsEl.addEventListener('click', (ev) => {
 
 loadBtn.addEventListener('click', () => {
     loadPending();
-    if (document.querySelector('.admin-tab-panel[data-tab="schedule"]:not([hidden])')) {
-        loadSchedule();
-    }
+    const sched = document.querySelector('.admin-tab-panel[data-tab="schedule"]:not([hidden])');
+    const pub = document.querySelector('.admin-tab-panel[data-tab="publish"]:not([hidden])');
+    if (sched || pub) loadSchedule();
 });
 
 songsEl.addEventListener('click', async (ev) => {

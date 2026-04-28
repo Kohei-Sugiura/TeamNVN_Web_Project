@@ -30,6 +30,23 @@ CREATE TABLE weepa_songs (
 );
 
 -- ============================================
+-- weepa_schedule_config（自動スケジューリングの設定値、1行のみ）
+-- 管理画面の「スケジューリング設定」から編集される。
+-- ============================================
+CREATE TABLE weepa_schedule_config (
+    id              INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    day_of_week     SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+    hour            SMALLINT NOT NULL CHECK (hour BETWEEN 0 AND 23),
+    minute          SMALLINT NOT NULL CHECK (minute BETWEEN 0 AND 59),
+    duration_hours  INTEGER  NOT NULL CHECK (duration_hours > 0),
+    timezone        TEXT     NOT NULL DEFAULT 'Asia/Tokyo'
+);
+
+INSERT INTO weepa_schedule_config (day_of_week, hour, minute, duration_hours, timezone)
+VALUES (3, 21, 0, 168, 'Asia/Tokyo')
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================
 -- weepa_events（開催イベント）
 -- tallied_at: 集計済 (= 公開済) フラグ。NULL=未集計。値が入ると公開状態。
 --   end_date 経過後に管理者が明示的にセットすることで結果を公開する。
