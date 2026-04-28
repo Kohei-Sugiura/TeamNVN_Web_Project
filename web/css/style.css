@@ -774,6 +774,24 @@ span.effect.effect-ult {
   white-space: nowrap;
 }
 
+.queue-table tbody tr[draggable="true"] {
+  cursor: grab;
+}
+
+.queue-table tbody tr[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.queue-table tbody tr.dragging {
+  opacity: 0.4;
+  background: rgba(0, 229, 255, 0.12);
+}
+
+.queue-table tbody tr.dragging td.rank {
+  color: #00e5ff;
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+}
+
 .status-active {
   color: #00e5ff;
   font-weight: bold;

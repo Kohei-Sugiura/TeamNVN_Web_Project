@@ -294,21 +294,21 @@ function renderQueue(queue) {
         return;
     }
     const rows = queue.map((q, i) => `
-      <tr data-event-id="${q.weepaEventId}">
-        <td class="rank">${i + 1}</td>
+      <tr data-event-id="${q.weepaEventId}" draggable="true">
+        <td class="rank" title="ドラッグで並び替え">${i + 1}</td>
         <td>${escapeHtml(q.song)}</td>
         <td>${effectBadgeHtml(q.effect)}</td>
         <td>${escapeHtml(q.submitName)} (@${escapeHtml(q.xId)})</td>
         <td>${escapeHtml(ymd(q.startDate))}~${escapeHtml(ymd(q.endDate))}</td>
         <td class="actions">
-          <button type="button" class="queue-up" data-event-id="${q.weepaEventId}">↑</button>
-          <button type="button" class="queue-down" data-event-id="${q.weepaEventId}">↓</button>
+          <button type="button" class="queue-up" data-event-id="${q.weepaEventId}" title="上に移動">↑</button>
+          <button type="button" class="queue-down" data-event-id="${q.weepaEventId}" title="下に移動">↓</button>
         </td>
       </tr>
     `).join('');
     scheduleQueueEl.innerHTML = `
       <div class="db-table-wrap">
-        <table class="ranking-table">
+        <table class="ranking-table queue-table">
           <thead>
             <tr>
               <th>#</th><th>楽曲</th><th>譜面</th><th>選曲者名</th>
@@ -319,6 +319,43 @@ function renderQueue(queue) {
         </table>
       </div>
     `;
+    attachQueueDragHandlers();
+}
+
+function renumberQueueRanks() {
+    scheduleQueueEl.querySelectorAll('tbody tr').forEach((row, i) => {
+        const rank = row.querySelector('td.rank');
+        if (rank) rank.textContent = String(i + 1);
+    });
+}
+
+let draggedQueueRow = null;
+function attachQueueDragHandlers() {
+    const rows = scheduleQueueEl.querySelectorAll('tbody tr[draggable="true"]');
+    rows.forEach((row) => {
+        row.addEventListener('dragstart', (ev) => {
+            draggedQueueRow = row;
+            row.classList.add('dragging');
+            ev.dataTransfer.effectAllowed = 'move';
+            // 一部ブラウザは setData が必要
+            try { ev.dataTransfer.setData('text/plain', row.dataset.eventId); } catch { /* noop */ }
+        });
+        row.addEventListener('dragend', () => {
+            row.classList.remove('dragging');
+            draggedQueueRow = null;
+            renumberQueueRanks();
+        });
+        row.addEventListener('dragover', (ev) => {
+            if (!draggedQueueRow || draggedQueueRow === row) return;
+            ev.preventDefault();
+            ev.dataTransfer.dropEffect = 'move';
+            const rect = row.getBoundingClientRect();
+            const before = ev.clientY < rect.top + rect.height / 2;
+            const parent = row.parentNode;
+            if (before) parent.insertBefore(draggedQueueRow, row);
+            else parent.insertBefore(draggedQueueRow, row.nextSibling);
+        });
+    });
 }
 
 function renderPublishList(past) {
@@ -421,10 +458,7 @@ function moveQueueRow(eventId, dir) {
     if (!sibling) return;
     if (dir === -1) tr.parentNode.insertBefore(tr, sibling);
     else tr.parentNode.insertBefore(sibling, tr);
-    scheduleQueueEl.querySelectorAll('tbody tr').forEach((row, i) => {
-        const rank = row.querySelector('td.rank');
-        if (rank) rank.textContent = String(i + 1);
-    });
+    renumberQueueRanks();
 }
 
 scheduleQueueEl.addEventListener('click', (ev) => {
