@@ -31,7 +31,8 @@ public class EventsController : ControllerBase
                 s.song           AS "Song",
                 s.effect         AS "Effect",
                 e.start_date     AS "StartDate",
-                e.end_date       AS "EndDate"
+                e.end_date       AS "EndDate",
+                e.tallied_at     AS "TalliedAt"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             ORDER BY e.start_date DESC
@@ -47,6 +48,7 @@ public class EventsController : ControllerBase
     [HttpGet("past")]
     public async Task<IActionResult> Past(CancellationToken ct)
     {
+        // 公開用: 集計済 (tallied_at IS NOT NULL) のみ返す。未公開イベントは隠す
         const string sql = """
             SELECT
                 e.weepa_event_id AS "WeepaEventId",
@@ -54,10 +56,12 @@ public class EventsController : ControllerBase
                 s.song           AS "Song",
                 s.effect         AS "Effect",
                 e.start_date     AS "StartDate",
-                e.end_date       AS "EndDate"
+                e.end_date       AS "EndDate",
+                e.tallied_at     AS "TalliedAt"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE e.end_date < NOW()
+              AND e.tallied_at IS NOT NULL
             ORDER BY e.end_date DESC
             """;
 
@@ -77,7 +81,8 @@ public class EventsController : ControllerBase
                 s.song           AS "Song",
                 s.effect         AS "Effect",
                 e.start_date     AS "StartDate",
-                e.end_date       AS "EndDate"
+                e.end_date       AS "EndDate",
+                e.tallied_at     AS "TalliedAt"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE NOW() BETWEEN e.start_date AND e.end_date
@@ -102,7 +107,8 @@ public class EventsController : ControllerBase
                 s.song           AS "Song",
                 s.effect         AS "Effect",
                 e.start_date     AS "StartDate",
-                e.end_date       AS "EndDate"
+                e.end_date       AS "EndDate",
+                e.tallied_at     AS "TalliedAt"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE e.weepa_event_id = @Id

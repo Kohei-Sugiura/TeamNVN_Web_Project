@@ -45,6 +45,7 @@ const TABLES = {
             { key: 'effect', label: '(譜面)', type: 'effect', computed: true },
             { key: 'startDate', label: 'start_date', type: 'datetime', required: true },
             { key: 'endDate', label: 'end_date', type: 'datetime', required: true },
+            { key: 'talliedAt', label: 'tallied_at (公開時刻)', type: 'datetime' },
         ],
     },
     scores: {

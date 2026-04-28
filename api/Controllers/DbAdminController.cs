@@ -180,6 +180,7 @@ public class DbAdminController : ControllerBase
                 e.weepa_song_id  AS "weepaSongId",
                 e.start_date     AS "startDate",
                 e.end_date       AS "endDate",
+                e.tallied_at     AS "talliedAt",
                 s.song           AS "song",
                 s.effect         AS "effect"
             FROM weepa_events e
@@ -239,7 +240,8 @@ public class DbAdminController : ControllerBase
             UPDATE weepa_events SET
                 weepa_song_id = COALESCE(@WeepaSongId, weepa_song_id),
                 start_date    = COALESCE(@StartDate, start_date),
-                end_date      = COALESCE(@EndDate, end_date)
+                end_date      = COALESCE(@EndDate, end_date),
+                tallied_at    = COALESCE(@TalliedAt, tallied_at)
             WHERE weepa_event_id = @Id
             """;
 
@@ -254,6 +256,7 @@ public class DbAdminController : ControllerBase
                     request.WeepaSongId,
                     StartDate = request.StartDate?.ToUniversalTime(),
                     EndDate = request.EndDate?.ToUniversalTime(),
+                    TalliedAt = request.TalliedAt?.ToUniversalTime(),
                 },
                 cancellationToken: ct));
             if (affected == 0) return NotFound(new { message = "対象のイベントが存在しません" });

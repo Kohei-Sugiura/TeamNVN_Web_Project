@@ -31,10 +31,11 @@ public class SongsController : ControllerBase
                 s.approval_status AS "approvalStatus",
                 ev.weepa_event_id AS "weepaEventId",
                 ev.start_date     AS "eventStartDate",
-                ev.end_date       AS "eventEndDate"
+                ev.end_date       AS "eventEndDate",
+                ev.tallied_at     AS "eventTalliedAt"
             FROM weepa_songs s
             LEFT JOIN LATERAL (
-                SELECT weepa_event_id, start_date, end_date
+                SELECT weepa_event_id, start_date, end_date, tallied_at
                 FROM weepa_events e
                 WHERE e.weepa_song_id = s.weepa_song_id
                 ORDER BY start_date ASC

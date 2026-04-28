@@ -35,12 +35,15 @@ CREATE TABLE weepa_songs (
 
 -- ============================================
 -- weepa_events（開催イベント）
+-- tallied_at: 集計済 (= 公開済) フラグ。NULL=未集計。値が入ると公開状態。
+--   end_date 経過後に管理者が明示的にセットすることで結果を公開する。
 -- ============================================
 CREATE TABLE weepa_events (
     weepa_event_id  SERIAL PRIMARY KEY,
     weepa_song_id   INTEGER NOT NULL REFERENCES weepa_songs(weepa_song_id),
     start_date      TIMESTAMPTZ NOT NULL,
     end_date        TIMESTAMPTZ NOT NULL,
+    tallied_at      TIMESTAMPTZ,
 
     CONSTRAINT valid_date_range CHECK (end_date > start_date)
 );

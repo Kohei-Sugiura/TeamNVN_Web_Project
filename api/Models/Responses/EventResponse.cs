@@ -8,4 +8,5 @@ public sealed class EventResponse
     public string Effect { get; init; } = string.Empty;
     public DateTimeOffset StartDate { get; init; }
     public DateTimeOffset EndDate { get; init; }
+    public DateTimeOffset? TalliedAt { get; init; }
 }

@@ -399,12 +399,33 @@ public class AdminController : ControllerBase
                 s.x_id           AS "xId",
                 s.submit_name    AS "submitName",
                 e.start_date     AS "startDate",
-                e.end_date       AS "endDate"
+                e.end_date       AS "endDate",
+                e.tallied_at     AS "talliedAt"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE NOW() BETWEEN e.start_date AND e.end_date
             ORDER BY e.start_date DESC
             LIMIT 1
+            """,
+            cancellationToken: ct));
+
+        // 過去のイベント (admin 用、未公開含む)
+        var past = await conn.QueryAsync(new CommandDefinition(
+            """
+            SELECT
+                e.weepa_event_id AS "weepaEventId",
+                e.weepa_song_id  AS "weepaSongId",
+                s.song           AS "song",
+                s.effect         AS "effect",
+                s.x_id           AS "xId",
+                s.submit_name    AS "submitName",
+                e.start_date     AS "startDate",
+                e.end_date       AS "endDate",
+                e.tallied_at     AS "talliedAt"
+            FROM weepa_events e
+            JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
+            WHERE e.end_date < NOW()
+            ORDER BY e.end_date DESC
             """,
             cancellationToken: ct));
 
@@ -473,6 +494,7 @@ public class AdminController : ControllerBase
             },
             current,
             queue = queueWithSchedule,
+            past,
         });
     }
 
@@ -527,6 +549,46 @@ public class AdminController : ControllerBase
         }
 
         await tx.CommitAsync(ct);
+        return Ok(new { message = "ok" });
+    }
+
+    [HttpPost("events/{id:int}/publish")]
+    public async Task<IActionResult> PublishEvent(int id, CancellationToken ct)
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var affected = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE weepa_events SET tallied_at = NOW() WHERE weepa_event_id = @Id AND tallied_at IS NULL",
+            new { Id = id },
+            cancellationToken: ct));
+
+        if (affected == 0)
+        {
+            return NotFound(new { message = "未公開のイベントが見つかりません（既に公開済み or 存在しない）" });
+        }
+
+        return Ok(new { message = "ok" });
+    }
+
+    [HttpPost("events/{id:int}/unpublish")]
+    public async Task<IActionResult> UnpublishEvent(int id, CancellationToken ct)
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var affected = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE weepa_events SET tallied_at = NULL WHERE weepa_event_id = @Id",
+            new { Id = id },
+            cancellationToken: ct));
+
+        if (affected == 0)
+        {
+            return NotFound(new { message = "対象イベントが見つかりません" });
+        }
+
         return Ok(new { message = "ok" });
     }
 
