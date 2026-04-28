@@ -210,37 +210,252 @@ async function onScoreAction(target) {
 }
 
 // ============================================
-// スケジュールタブ
+// 開催スケジュールタブ
 // ============================================
 
-const scheduleInfoEl = document.getElementById('schedule-info');
+const scheduleCurrentEl = document.getElementById('schedule-current');
+const scheduleQueueEl = document.getElementById('schedule-queue');
+const schedulePastEl = document.getElementById('schedule-past');
+const scheduleConfigEl = document.getElementById('schedule-config');
 const triggerBtn = document.getElementById('trigger-btn');
+const reorderSaveBtn = document.getElementById('reorder-save-btn');
 
 const DAY_OF_WEEK_LABEL = {
     Sunday: '日曜', Monday: '月曜', Tuesday: '火曜', Wednesday: '水曜',
     Thursday: '木曜', Friday: '金曜', Saturday: '土曜',
 };
 
-async function loadSchedule() {
-    scheduleInfoEl.innerHTML = '<p class="loading">読み込み中...</p>';
+function effectBadgeHtml(effect) {
+    if (!effect) return '';
+    return `<span class="effect effect-${String(effect).toLowerCase()}">${escapeHtml(effect)}</span>`;
+}
+
+function ymd(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function renderCurrentEvent(current) {
+    if (!current) {
+        scheduleCurrentEl.innerHTML = '<p class="empty">現在開催中のイベントはありません。</p>';
+        return;
+    }
+    scheduleCurrentEl.innerHTML = `
+      <div class="event-title">
+        <span class="song">${escapeHtml(current.song)}</span>
+        ${effectBadgeHtml(current.effect)}
+      </div>
+      <p>選曲者: ${escapeHtml(current.submitName)} (@${escapeHtml(current.xId)})</p>
+      <div class="admin-edit-fields">
+        <label>開始日時
+          <input type="datetime-local" id="current-start" value="${isoToLocalInput(current.startDate)}">
+        </label>
+        <label>終了日時
+          <input type="datetime-local" id="current-end" value="${isoToLocalInput(current.endDate)}">
+        </label>
+      </div>
+      <div class="form-actions">
+        <button type="button" id="current-save-btn" data-event-id="${current.weepaEventId}">期間を保存</button>
+      </div>
+    `;
+    document.getElementById('current-save-btn').addEventListener('click', saveCurrentEvent);
+}
+
+async function saveCurrentEvent(ev) {
+    const id = ev.currentTarget.dataset.eventId;
+    const start = localInputToIso(document.getElementById('current-start').value);
+    const end = localInputToIso(document.getElementById('current-end').value);
+    if (!start || !end) {
+        setInfo('開始日時と終了日時を入力してください。', 'ng');
+        return;
+    }
+    ev.currentTarget.disabled = true;
     try {
-        const s = await adminFetch('/api/admin/schedule');
-        const dow = DAY_OF_WEEK_LABEL[s.dayOfWeek] ?? s.dayOfWeek;
-        const time = `${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}`;
-        scheduleInfoEl.innerHTML = `
-          <dl class="schedule-info">
-            <dt>タイムゾーン</dt><dd>${escapeHtml(s.timezone)}</dd>
-            <dt>開催曜日</dt>     <dd>${escapeHtml(dow)}</dd>
-            <dt>開始時刻</dt>     <dd>${escapeHtml(time)}</dd>
-            <dt>開催期間</dt>     <dd>${s.durationHours} 時間 (= ${(s.durationHours / 24).toFixed(1)} 日)</dd>
-            <dt>cron 起動時刻</dt><dd><code>${escapeHtml(s.triggerCron)}</code></dd>
-          </dl>
-        `;
+        await adminFetch(`/api/admin/db/events/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ startDate: start, endDate: end }),
+        });
+        setInfo(`現在開催中イベント (id=${id}) の期間を更新しました。`, 'ok');
+        await loadSchedule();
     } catch (err) {
         if (err.message === 'AUTH_REDIRECT') return;
-        scheduleInfoEl.innerHTML = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
+        setInfo(err.message, 'ng');
     }
 }
+
+function renderQueue(queue) {
+    if (!queue.length) {
+        scheduleQueueEl.innerHTML = '<p class="empty">未開催の楽曲はありません。</p>';
+        return;
+    }
+    const rows = queue.map((q, i) => `
+      <tr data-song-id="${q.weepaSongId}">
+        <td class="rank">${i + 1}</td>
+        <td>${escapeHtml(q.song)}</td>
+        <td>${effectBadgeHtml(q.effect)}</td>
+        <td>${escapeHtml(q.submitName)} (@${escapeHtml(q.xId)})</td>
+        <td>${escapeHtml(ymd(q.scheduledStart))}~${escapeHtml(ymd(q.scheduledEnd))}</td>
+        <td class="actions">
+          <button type="button" class="queue-up" data-song-id="${q.weepaSongId}">↑</button>
+          <button type="button" class="queue-down" data-song-id="${q.weepaSongId}">↓</button>
+        </td>
+      </tr>
+    `).join('');
+    scheduleQueueEl.innerHTML = `
+      <div class="db-table-wrap">
+        <table class="ranking-table">
+          <thead>
+            <tr>
+              <th>#</th><th>楽曲</th><th>譜面</th><th>選曲者名</th>
+              <th>開催予定</th><th>並替</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+}
+
+function renderPast(past) {
+    if (!past.length) {
+        schedulePastEl.innerHTML = '<p class="empty">過去のイベントはまだありません。</p>';
+        return;
+    }
+    const rows = past.map((p) => {
+        const published = !!p.talliedAt;
+        const statusCell = published
+            ? `<span class="status-active">公開済</span>`
+            : `<span class="status-tallying">未公開</span>`;
+        const actionCell = published
+            ? `<button type="button" class="event-unpublish" data-event-id="${p.weepaEventId}">公開取消</button>`
+            : `<button type="button" class="event-publish" data-event-id="${p.weepaEventId}">公開</button>`;
+        return `
+          <tr>
+            <td>${escapeHtml(p.song)}</td>
+            <td>${effectBadgeHtml(p.effect)}</td>
+            <td>${escapeHtml(p.submitName)}</td>
+            <td>${escapeHtml(ymd(p.startDate))}~${escapeHtml(ymd(p.endDate))}</td>
+            <td class="status-cell">${statusCell}</td>
+            <td class="actions">${actionCell}</td>
+          </tr>
+        `;
+    }).join('');
+    schedulePastEl.innerHTML = `
+      <div class="db-table-wrap">
+        <table class="ranking-table">
+          <thead>
+            <tr><th>楽曲</th><th>譜面</th><th>選曲者</th><th>開催期間</th><th class="status-cell">公開状態</th><th>操作</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+}
+
+function renderConfig(cfg) {
+    const dow = DAY_OF_WEEK_LABEL[cfg.dayOfWeek] ?? cfg.dayOfWeek;
+    const time = `${String(cfg.hour).padStart(2, '0')}:${String(cfg.minute).padStart(2, '0')}`;
+    scheduleConfigEl.innerHTML = `
+      <dl class="schedule-info">
+        <dt>タイムゾーン</dt><dd>${escapeHtml(cfg.timezone)}</dd>
+        <dt>開催曜日</dt>     <dd>${escapeHtml(dow)}</dd>
+        <dt>開始時刻</dt>     <dd>${escapeHtml(time)}</dd>
+        <dt>開催期間</dt>     <dd>${cfg.durationHours} 時間 (= ${(cfg.durationHours / 24).toFixed(1)} 日)</dd>
+        <dt>scheduler 起動 (cron, UTC)</dt>
+        <dd><code>${escapeHtml(cfg.triggerCron)}</code></dd>
+      </dl>
+    `;
+}
+
+async function loadSchedule() {
+    scheduleCurrentEl.innerHTML = '<p class="loading">読み込み中...</p>';
+    scheduleQueueEl.innerHTML = '<p class="loading">読み込み中...</p>';
+    schedulePastEl.innerHTML = '<p class="loading">読み込み中...</p>';
+    scheduleConfigEl.innerHTML = '<p class="loading">読み込み中...</p>';
+    try {
+        const data = await adminFetch('/api/admin/schedule');
+        renderCurrentEvent(data.current);
+        renderQueue(data.queue || []);
+        renderPast(data.past || []);
+        renderConfig(data.config);
+    } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
+        const msg = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
+        scheduleCurrentEl.innerHTML = msg;
+        scheduleQueueEl.innerHTML = '';
+        schedulePastEl.innerHTML = '';
+        scheduleConfigEl.innerHTML = '';
+    }
+}
+
+function moveQueueRow(songId, dir) {
+    const tr = scheduleQueueEl.querySelector(`tr[data-song-id="${songId}"]`);
+    if (!tr) return;
+    const sibling = dir === -1 ? tr.previousElementSibling : tr.nextElementSibling;
+    if (!sibling) return;
+    if (dir === -1) tr.parentNode.insertBefore(tr, sibling);
+    else tr.parentNode.insertBefore(sibling, tr);
+    scheduleQueueEl.querySelectorAll('tbody tr').forEach((row, i) => {
+        const rank = row.querySelector('td.rank');
+        if (rank) rank.textContent = String(i + 1);
+    });
+}
+
+scheduleQueueEl.addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (!(t instanceof HTMLButtonElement)) return;
+    const id = Number(t.dataset.songId);
+    if (!id) return;
+    if (t.classList.contains('queue-up')) moveQueueRow(id, -1);
+    else if (t.classList.contains('queue-down')) moveQueueRow(id, 1);
+});
+
+reorderSaveBtn.addEventListener('click', async () => {
+    const order = Array.from(scheduleQueueEl.querySelectorAll('tbody tr'))
+        .map((tr) => Number(tr.dataset.songId));
+    if (!order.length) return;
+    reorderSaveBtn.disabled = true;
+    try {
+        await adminFetch('/api/admin/schedule/reorder', {
+            method: 'PUT',
+            body: JSON.stringify({ order }),
+        });
+        setInfo('開催キューの順番を保存しました。', 'ok');
+        await loadSchedule();
+    } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
+        setInfo(err.message, 'ng');
+    } finally {
+        reorderSaveBtn.disabled = false;
+    }
+});
+
+schedulePastEl.addEventListener('click', async (ev) => {
+    const t = ev.target;
+    if (!(t instanceof HTMLButtonElement)) return;
+    const id = t.dataset.eventId;
+    if (!id) return;
+    const isPublish = t.classList.contains('event-publish');
+    const isUnpublish = t.classList.contains('event-unpublish');
+    if (!isPublish && !isUnpublish) return;
+    const verb = isPublish ? '公開' : '公開取消';
+    if (!confirm(`event_id=${id} を${verb}します。よろしいですか？`)) return;
+    t.disabled = true;
+    try {
+        await adminFetch(`/api/admin/events/${id}/${isPublish ? 'publish' : 'unpublish'}`, {
+            method: 'POST',
+            body: '{}',
+        });
+        setInfo(`event_id=${id} を${verb}しました。`, 'ok');
+        await loadSchedule();
+    } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
+        setInfo(err.message, 'ng');
+    } finally {
+        t.disabled = false;
+    }
+});
 
 triggerBtn.addEventListener('click', async () => {
     if (!confirm('次回イベントを今すぐ自動生成します。よろしいですか？')) return;
@@ -251,6 +466,7 @@ triggerBtn.addEventListener('click', async () => {
             body: '{}',
         });
         setInfo(`イベント生成成功: ${JSON.stringify(result)}`, 'ok');
+        await loadSchedule();
     } catch (err) {
         if (err.message === 'AUTH_REDIRECT') return;
         setInfo(`生成失敗: ${err.message}`, 'ng');

@@ -17,7 +17,7 @@
         <nav class="inner-tabs" id="admin-tabs">
             <button type="button" data-tab="songs" class="active">楽曲承認</button>
             <button type="button" data-tab="scores">スコア承認</button>
-            <button type="button" data-tab="schedule">スケジュール</button>
+            <button type="button" data-tab="schedule">開催スケジュール</button>
         </nav>
 
         <div class="form-actions">
@@ -40,13 +40,30 @@
         </section>
 
         <section class="event-card admin-tab-panel" data-tab="schedule" hidden>
-            <h2>WeePA スケジュール</h2>
-            <div id="schedule-info">
+            <h2>現在開催中</h2>
+            <div id="schedule-current">
                 <p class="loading">読み込み中...</p>
             </div>
-            <p class="hint">cron トリガーは毎日この時刻に実行され、その時点で次回開催枠が空いていれば自動生成します。</p>
+
+            <h2 style="margin-top:24px;">開催キュー (承認済み・未開催)</h2>
+            <p class="hint">承認済み楽曲を「次に開催する順」で並べます。↑↓ で順番を入れ替えて「順番を保存」してください。</p>
+            <div id="schedule-queue">
+                <p class="loading">読み込み中...</p>
+            </div>
             <div class="form-actions">
+                <button type="button" id="reorder-save-btn">順番を保存</button>
                 <button type="button" id="trigger-btn">今すぐ次回イベントを生成</button>
+            </div>
+
+            <h2 style="margin-top:24px;">過去のイベント</h2>
+            <p class="hint">end_date を過ぎたイベント。「公開」を押すと結果がランキング詳細ページから見られるようになります。</p>
+            <div id="schedule-past">
+                <p class="loading">読み込み中...</p>
+            </div>
+
+            <h2 style="margin-top:24px;">自動生成設定</h2>
+            <div id="schedule-config">
+                <p class="loading">読み込み中...</p>
             </div>
         </section>
     </main>
