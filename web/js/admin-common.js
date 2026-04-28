@@ -131,7 +131,7 @@ function statusSelectOptions(currentValue, withSongImplemented) {
 
 const ADMIN_NAV = `
   <p class="admin-nav">
-    <a href="/admin/">未承認</a>
+    <a href="/admin/">WeePA</a>
     <span class="sep">|</span>
     <a href="/admin/db/">DB管理</a>
     <span class="sep">|</span>

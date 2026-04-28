@@ -854,6 +854,66 @@ span.effect.effect-ult {
   font-size: 0.92rem;
 }
 
+.inner-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 18px 0 20px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.25);
+}
+
+.inner-tabs button {
+  padding: 8px 18px;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+  color: #9090b0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.inner-tabs button:hover {
+  color: #c0c0e0;
+  background: rgba(0, 229, 255, 0.06);
+}
+
+.inner-tabs button.active {
+  color: #00e5ff;
+  background: rgba(0, 229, 255, 0.1);
+  border-color: rgba(0, 229, 255, 0.4);
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
+}
+
+.schedule-info {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 18px;
+  margin: 8px 0 14px;
+}
+
+.schedule-info dt {
+  color: #9090b0;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+}
+
+.schedule-info dd {
+  margin: 0;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-info code {
+  padding: 2px 6px;
+  font-size: 0.9rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: 3px;
+}
+
 .admin-nav .sep {
   color: #505070;
   margin: 0 6px;

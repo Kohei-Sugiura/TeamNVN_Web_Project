@@ -209,7 +209,94 @@ async function onScoreAction(target) {
     }
 }
 
-loadBtn.addEventListener('click', loadPending);
+// ============================================
+// スケジュールタブ
+// ============================================
+
+const scheduleInfoEl = document.getElementById('schedule-info');
+const triggerBtn = document.getElementById('trigger-btn');
+
+const DAY_OF_WEEK_LABEL = {
+    Sunday: '日曜', Monday: '月曜', Tuesday: '火曜', Wednesday: '水曜',
+    Thursday: '木曜', Friday: '金曜', Saturday: '土曜',
+};
+
+async function loadSchedule() {
+    scheduleInfoEl.innerHTML = '<p class="loading">読み込み中...</p>';
+    try {
+        const s = await adminFetch('/api/admin/schedule');
+        const dow = DAY_OF_WEEK_LABEL[s.dayOfWeek] ?? s.dayOfWeek;
+        const time = `${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}`;
+        scheduleInfoEl.innerHTML = `
+          <dl class="schedule-info">
+            <dt>タイムゾーン</dt><dd>${escapeHtml(s.timezone)}</dd>
+            <dt>開催曜日</dt>     <dd>${escapeHtml(dow)}</dd>
+            <dt>開始時刻</dt>     <dd>${escapeHtml(time)}</dd>
+            <dt>開催期間</dt>     <dd>${s.durationHours} 時間 (= ${(s.durationHours / 24).toFixed(1)} 日)</dd>
+            <dt>cron 起動時刻</dt><dd><code>${escapeHtml(s.triggerCron)}</code></dd>
+          </dl>
+        `;
+    } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
+        scheduleInfoEl.innerHTML = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
+    }
+}
+
+triggerBtn.addEventListener('click', async () => {
+    if (!confirm('次回イベントを今すぐ自動生成します。よろしいですか？')) return;
+    triggerBtn.disabled = true;
+    try {
+        const result = await adminFetch('/api/admin/events/auto-weekly', {
+            method: 'POST',
+            body: '{}',
+        });
+        setInfo(`イベント生成成功: ${JSON.stringify(result)}`, 'ok');
+    } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
+        setInfo(`生成失敗: ${err.message}`, 'ng');
+    } finally {
+        triggerBtn.disabled = false;
+    }
+});
+
+// ============================================
+// タブ切替
+// ============================================
+
+const tabsEl = document.getElementById('admin-tabs');
+const panels = document.querySelectorAll('.admin-tab-panel');
+
+function selectTab(tab) {
+    tabsEl.querySelectorAll('button').forEach((b) => {
+        b.classList.toggle('active', b.dataset.tab === tab);
+    });
+    panels.forEach((p) => {
+        p.hidden = p.dataset.tab !== tab;
+    });
+    if (tab === 'schedule') loadSchedule();
+    if (history.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', tab);
+        history.replaceState(null, '', url);
+    }
+}
+
+tabsEl.addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (!(t instanceof HTMLButtonElement)) return;
+    selectTab(t.dataset.tab);
+});
+
+// ============================================
+// イベントリスナー / 初期化
+// ============================================
+
+loadBtn.addEventListener('click', () => {
+    loadPending();
+    if (document.querySelector('.admin-tab-panel[data-tab="schedule"]:not([hidden])')) {
+        loadSchedule();
+    }
+});
 
 songsEl.addEventListener('click', async (ev) => {
     const target = ev.target;
@@ -225,4 +312,6 @@ scoresEl.addEventListener('click', async (ev) => {
     await onScoreAction(target);
 });
 
+const initialTab = new URLSearchParams(window.location.search).get('tab') || 'songs';
+selectTab(initialTab);
 loadPending();

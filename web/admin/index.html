@@ -12,24 +12,41 @@
     <main class="container">
         <p><a href="/">← トップへ</a></p>
         <div id="admin-nav"></div>
-        <h1>管理画面</h1>
+        <h1>WeePA 管理</h1>
+
+        <nav class="inner-tabs" id="admin-tabs">
+            <button type="button" data-tab="songs" class="active">楽曲承認</button>
+            <button type="button" data-tab="scores">スコア承認</button>
+            <button type="button" data-tab="schedule">スケジュール</button>
+        </nav>
 
         <div class="form-actions">
             <button type="button" id="load-btn">再読み込み</button>
         </div>
         <p id="admin-result" class="result" role="status" aria-live="polite"></p>
 
-        <section class="event-card">
-            <h2>未承認の選曲提案</h2>
+        <section class="event-card admin-tab-panel" data-tab="songs">
+            <h2>楽曲承認待ち</h2>
             <div id="pending-songs" class="admin-list">
-                <p class="loading">読み込み待ちです。</p>
+                <p class="loading">読み込み中...</p>
             </div>
         </section>
 
-        <section class="event-card">
-            <h2>未承認のスコア投稿</h2>
+        <section class="event-card admin-tab-panel" data-tab="scores" hidden>
+            <h2>スコア承認待ち</h2>
             <div id="pending-scores" class="admin-list">
-                <p class="loading">読み込み待ちです。</p>
+                <p class="loading">読み込み中...</p>
+            </div>
+        </section>
+
+        <section class="event-card admin-tab-panel" data-tab="schedule" hidden>
+            <h2>WeePA スケジュール</h2>
+            <div id="schedule-info">
+                <p class="loading">読み込み中...</p>
+            </div>
+            <p class="hint">cron トリガーは毎日この時刻に実行され、その時点で次回開催枠が空いていれば自動生成します。</p>
+            <div class="form-actions">
+                <button type="button" id="trigger-btn">今すぐ次回イベントを生成</button>
             </div>
         </section>
     </main>
