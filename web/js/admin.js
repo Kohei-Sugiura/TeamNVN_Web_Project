@@ -337,6 +337,7 @@ function renderPublishList(past) {
             <td>${effectBadgeHtml(p.effect)}</td>
             <td>${escapeHtml(p.submitName)}</td>
             <td>${escapeHtml(ymd(p.startDate))}~${escapeHtml(ymd(p.endDate))}</td>
+            <td><a href="/admin/preview/?eventId=${encodeURIComponent(p.weepaEventId)}">プレビュー</a></td>
             <td class="status-cell">
               <label class="toggle-switch" title="${published ? '公開中 → クリックで非公開' : '非公開 → クリックで公開'}">
                 <input type="checkbox" class="publish-toggle" data-event-id="${p.weepaEventId}"${published ? ' checked' : ''}>
@@ -351,7 +352,7 @@ function renderPublishList(past) {
       <div class="db-table-wrap">
         <table class="ranking-table">
           <thead>
-            <tr><th>楽曲</th><th>譜面</th><th>選曲者</th><th>開催期間</th><th class="status-cell">公開</th></tr>
+            <tr><th>楽曲</th><th>譜面</th><th>選曲者</th><th>開催期間</th><th>確認</th><th class="status-cell">公開</th></tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>

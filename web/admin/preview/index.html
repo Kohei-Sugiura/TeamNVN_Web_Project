@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公開前プレビュー - Team NVN WeePA</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <main class="container">
+        <p><a href="/admin/?tab=publish">← 公開設定に戻る</a></p>
+        <div id="admin-nav"></div>
+        <h1>公開前プレビュー</h1>
+        <p class="hint">未公開イベントのランキングを管理者だけが先に確認するページです。一般ユーザーには公開前なので見えません。</p>
+
+        <section id="event-section" class="event-card" hidden>
+            <div id="event-display" class="event-display">
+                <p class="loading">読み込み中...</p>
+            </div>
+            <p id="publish-status" class="result"></p>
+        </section>
+
+        <section id="ranking-section" class="ranking-section" hidden>
+            <h2>ランキング</h2>
+            <div id="ranking-display">
+                <p class="loading">読み込み中...</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/js/admin-common.js"></script>
+    <script src="/js/admin-preview.js"></script>
+</body>
+
+</html>

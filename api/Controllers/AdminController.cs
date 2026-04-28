@@ -654,6 +654,21 @@ public class AdminController : ControllerBase
         if (authFailure is not null) return authFailure;
 
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        // 未処理のスコア (approval_status=0) があれば公開を拒否する
+        var pendingCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM weepa_scores WHERE weepa_event_id = @Id AND approval_status = 0",
+            new { Id = id },
+            cancellationToken: ct));
+        if (pendingCount > 0)
+        {
+            return BadRequest(new
+            {
+                message = $"未処理（承認も却下もされていない）スコアが {pendingCount} 件あります。先にスコア承認タブで処理してください。",
+                pendingCount,
+            });
+        }
+
         var affected = await conn.ExecuteAsync(new CommandDefinition(
             "UPDATE weepa_events SET tallied_at = NOW() WHERE weepa_event_id = @Id AND tallied_at IS NULL",
             new { Id = id },
