@@ -1,8 +1,6 @@
 const heldEl = document.getElementById('held');
 const unheldEl = document.getElementById('unheld');
 
-const TALLIED_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
-
 function escapeHtml(s) {
     if (s === null || s === undefined) return '';
     return String(s).replace(/[&<>"']/g, (c) => ({
@@ -32,8 +30,7 @@ function eventState(s, now) {
     const end = new Date(s.eventEndDate);
     if (now < start) return 'upcoming';
     if (now < end) return 'active';
-    if (now < new Date(end.getTime() + TALLIED_AFTER_MS)) return 'tallying';
-    return 'finished';
+    return s.eventTalliedAt ? 'finished' : 'tallying';
 }
 
 function statusCell(s, now) {

@@ -1,7 +1,5 @@
 const cardsEl = document.getElementById('weepa-cards');
 
-const TALLIED_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
-
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -30,8 +28,8 @@ function isPast(ev, now) {
   return new Date(ev.endDate) <= now;
 }
 
-function isTallied(ev, now) {
-  return now >= new Date(new Date(ev.endDate).getTime() + TALLIED_AFTER_MS);
+function isTallied(ev) {
+  return !!ev.talliedAt;
 }
 
 function activeCard(ev) {
@@ -52,7 +50,7 @@ function activeCard(ev) {
 }
 
 function recentEntry(ev, now) {
-  const tallied = isTallied(ev, now);
+  const tallied = isTallied(ev);
   const action = tallied
     ? `<a class="event-link" href="/weepa/ranking/?eventId=${encodeURIComponent(ev.weepaEventId)}">ランキング詳細を見る</a>`
     : `<span class="weepa-pending">集計が完了するまでお待ちください</span>`;
