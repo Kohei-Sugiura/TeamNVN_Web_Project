@@ -58,35 +58,23 @@ function scoreCard(item) {
     return `
     <article class="admin-item" data-key="${key}">
       <p><strong>${escapeHtml(item.song)}</strong> <span class="effect effect-${(item.effect || '').toLowerCase()}">${escapeHtml(item.effect)}</span></p>
-      <p>event=${item.weepaEventId} / submit=${item.submitId} / @${escapeHtml(item.xId)}</p>
-      <p>投稿者: ${escapeHtml(item.submitName)}</p>
-      <p>スコア: <strong>${Number(item.score).toLocaleString('ja-JP')}</strong> / EX: ${item.exScore == null ? '-' : Number(item.exScore).toLocaleString('ja-JP')}</p>
-      <p class="period">投稿日時: ${escapeHtml(formatDate(item.submitDate))}</p>
+      <p>投稿者: ${escapeHtml(item.submitName)} (@${escapeHtml(item.xId)})</p>
+      <div class="admin-edit-fields">
+        <label>スコア
+          <input type="number" class="edit-score" value="${item.score}" min="0" max="10000000">
+        </label>
+        <label>EXスコア
+          <input type="number" class="edit-ex-score" value="${item.exScore == null ? '' : item.exScore}" min="0" placeholder="(未入力可)">
+        </label>
+      </div>
       ${imageLink}
+      <p class="period">投稿日時: ${escapeHtml(formatDate(item.submitDate))}</p>
       <div class="admin-actions"
            data-event-id="${item.weepaEventId}"
            data-x-id="${escapeHtml(item.xId)}"
-           data-submit-id="${item.submitId}"
-           data-score="${item.score}"
-           data-ex-score="${item.exScore == null ? '' : item.exScore}">
+           data-submit-id="${item.submitId}">
         <button type="button" class="action-approve">承認</button>
-        <button type="button" class="action-approve-edit">修正して承認</button>
         <button type="button" class="action-reject">却下</button>
-      </div>
-      <div class="admin-edit-panel" hidden>
-        <div class="admin-edit-fields">
-          <label>スコア
-            <input type="number" class="edit-score" value="${item.score}" min="0" max="10000000">
-          </label>
-          <label>EXスコア
-            <input type="number" class="edit-ex-score" value="${item.exScore == null ? '' : item.exScore}" min="0" placeholder="(未入力可)">
-          </label>
-        </div>
-        <p class="hint">いずれか / 両方を編集して「この値で承認」してください。空欄のまま承認すれば元の値のままです。</p>
-        <div class="admin-actions">
-          <button type="button" class="action-edit-confirm">この値で承認</button>
-          <button type="button" class="action-edit-cancel">キャンセル</button>
-        </div>
       </div>
     </article>
   `;
@@ -169,17 +157,9 @@ async function onSongAction(target) {
     }
 }
 
-function toggleEditPanel(card, showEdit) {
-    const actions = card.querySelector('.admin-actions');
-    const panel = card.querySelector('.admin-edit-panel');
-    if (!actions || !panel) return;
-    actions.hidden = showEdit;
-    panel.hidden = !showEdit;
-}
-
-function readEditValues(panel) {
-    const scoreRaw = panel.querySelector('.edit-score').value.trim();
-    const exRaw = panel.querySelector('.edit-ex-score').value.trim();
+function readScoreEditValues(card) {
+    const scoreRaw = card.querySelector('.edit-score').value.trim();
+    const exRaw = card.querySelector('.edit-ex-score').value.trim();
     const parsedScore = parseOptionalInt(scoreRaw);
     const parsedEx = parseOptionalInt(exRaw);
     if (!parsedScore.ok || !parsedEx.ok) {
@@ -201,31 +181,15 @@ async function onScoreAction(target) {
 
     const scorePath = `/api/admin/scores/${eventId}/${encodeURIComponent(xId)}/${submitId}`;
 
-    if (target.classList.contains('action-approve-edit')) {
-        toggleEditPanel(card, true);
-        return;
-    }
-    if (target.classList.contains('action-edit-cancel')) {
-        toggleEditPanel(card, false);
-        return;
-    }
-
     target.disabled = true;
     try {
         if (target.classList.contains('action-approve')) {
-            await adminFetch(`${scorePath}/approve`, { method: 'POST', body: '{}' });
-            setInfo(`スコア event=${eventId} submit=${submitId} を承認しました。`, 'ok');
-        } else if (target.classList.contains('action-edit-confirm')) {
-            const panel = card.querySelector('.admin-edit-panel');
-            const payload = readEditValues(panel);
+            const payload = readScoreEditValues(card);
             await adminFetch(`${scorePath}/approve`, {
                 method: 'POST',
                 body: JSON.stringify(payload),
             });
-            const summary = Object.keys(payload).length === 0
-                ? '修正なしで承認'
-                : `修正値 ${JSON.stringify(payload)} で承認`;
-            setInfo(`スコア event=${eventId} submit=${submitId} を${summary}しました。`, 'ok');
+            setInfo(`スコア event=${eventId} submit=${submitId} を承認しました。`, 'ok');
         } else if (target.classList.contains('action-reject')) {
             if (!confirm(`スコア event=${eventId} submit=${submitId} を却下します。よろしいですか？`)) {
                 return;
@@ -257,8 +221,7 @@ songsEl.addEventListener('click', async (ev) => {
 scoresEl.addEventListener('click', async (ev) => {
     const target = ev.target;
     if (!(target instanceof HTMLButtonElement)) return;
-    const classes = ['action-approve', 'action-approve-edit', 'action-reject', 'action-edit-confirm', 'action-edit-cancel'];
-    if (!classes.some((c) => target.classList.contains(c))) return;
+    if (!target.classList.contains('action-approve') && !target.classList.contains('action-reject')) return;
     await onScoreAction(target);
 });
 
