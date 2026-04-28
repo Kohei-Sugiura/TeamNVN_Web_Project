@@ -91,7 +91,7 @@ function adjustingCard() {
 
 (async () => {
   try {
-    const res = await fetch('/api/events/recent?limit=6');
+    const res = await fetch('/api/events/recent?limit=20');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const events = await res.json();
     const now = new Date();
