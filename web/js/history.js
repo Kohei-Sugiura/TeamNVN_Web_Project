@@ -63,7 +63,6 @@ function unheldRow(s) {
         <td>${escapeHtml(s.song)}</td>
         <td><span class="effect effect-${(s.effect || '').toLowerCase()}">${escapeHtml(s.effect)}</span></td>
         <td>${escapeHtml(s.submitName)}</td>
-        <td>${escapeHtml(formatYmd(s.submitDate))}</td>
       </tr>
     `;
 }
@@ -93,7 +92,7 @@ function renderUnheld(items) {
     unheldEl.innerHTML = `
       <table class="ranking-table history-table">
         <thead>
-          <tr><th>楽曲</th><th>譜面種</th><th>提案者</th><th>提案日</th></tr>
+          <tr><th>楽曲</th><th>譜面種</th><th>提案者</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -114,7 +113,7 @@ function renderUnheld(items) {
 
         const held = items
             .filter(isHeld)
-            .sort((a, b) => new Date(a.eventStartDate) - new Date(b.eventStartDate));
+            .sort((a, b) => new Date(b.eventStartDate) - new Date(a.eventStartDate));
 
         const unheld = items
             .filter((s) => !isHeld(s))
