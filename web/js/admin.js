@@ -14,14 +14,29 @@ function formatDate(iso) {
     });
 }
 
+const EFFECT_OPTIONS = ['NOV', 'ADV', 'EXH', 'MXM', 'INF', 'GRV', 'HVN', 'VVD', 'XCD', 'ULT'];
+
+function effectSelectOptions(current) {
+    return EFFECT_OPTIONS
+        .map((e) => `<option value="${e}"${e === current ? ' selected' : ''}>${e}</option>`)
+        .join('');
+}
+
 function songCard(item) {
     const reason = item.submitReason
         ? `<p>理由: ${escapeHtml(item.submitReason)}</p>`
         : '<p>理由: (未入力)</p>';
 
     return `
-    <article class="admin-item">
-      <p><strong>${escapeHtml(item.song)}</strong> <span class="effect effect-${(item.effect || '').toLowerCase()}">${escapeHtml(item.effect)}</span></p>
+    <article class="admin-item" data-song-id="${item.weepaSongId}">
+      <div class="admin-edit-fields">
+        <label>曲名
+          <input type="text" class="edit-song" value="${escapeHtml(item.song)}" maxlength="200">
+        </label>
+        <label>エフェクト
+          <select class="edit-effect">${effectSelectOptions(item.effect)}</select>
+        </label>
+      </div>
       <p>提案者: ${escapeHtml(item.submitName)} (@${escapeHtml(item.xId)})</p>
       ${reason}
       <p class="period">投稿日時: ${escapeHtml(formatDate(item.submitDate))}</p>
@@ -119,6 +134,8 @@ function parseOptionalInt(text) {
 async function onSongAction(target) {
     const songId = target.dataset.songId;
     if (!songId) return;
+    const card = target.closest('.admin-item');
+    if (!card) return;
 
     const isApprove = target.classList.contains('action-approve');
     if (!isApprove && !confirm(`選曲提案 ${songId} を却下します。よろしいですか？`)) {
@@ -128,7 +145,16 @@ async function onSongAction(target) {
     target.disabled = true;
     try {
         if (isApprove) {
-            await adminFetch(`/api/admin/songs/${songId}/approve`, { method: 'POST', body: '{}' });
+            const songInput = card.querySelector('.edit-song');
+            const effectInput = card.querySelector('.edit-effect');
+            const payload = {
+                song: songInput?.value.trim() || null,
+                effect: effectInput?.value || null,
+            };
+            await adminFetch(`/api/admin/songs/${songId}/approve`, {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            });
             setInfo(`楽曲提案 ${songId} を承認しました。`, 'ok');
         } else {
             await adminFetch(`/api/admin/songs/${songId}/reject`, { method: 'POST', body: '{}' });
