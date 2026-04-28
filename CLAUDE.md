@@ -57,7 +57,7 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 | ランキング公開 | **集計完了後のみ** | 開催中イベントにはランキングへの導線を置かない。`/weepa/ranking/` は存在するが直URL経由のみ |
 | 集計完了の判定方法 | **未定** | Step 6 or 後工程で決定（候補: `end_date < NOW()` で自動 / 管理者が `tallied_at` を明示） |
 | `approval_status` の値設計 | **負値=終端（却下）／非負=前進パイプライン** | `-1=却下 / 0=未承認 / 1=承認済み`。「非却下」は `approval_status >= 0` で綺麗に書ける。songs/scores 両テーブル共通 |
-| 楽曲の「実施済み」状態 | **`approval_status=2` を実施済みとして追加** | イベント作成時（手動・auto-weekly 双方）で対象曲を 1→2 に遷移。auto-weekly の抽選対象は status=1 のみなので実施済みは再度選ばれない。スコア側には実施済み相当の状態は無い |
+| 楽曲の「実施済み」判定 | **events に紐付いているかで判定（専用ステータスは持たない）** | `weepa_events.weepa_song_id` の有無で実施済みかどうかを派生。auto-weekly や手動 CreateEvent は `status=1 AND NOT EXISTS event` を選出/検証する |
 
 ## UI/UX ルール
 

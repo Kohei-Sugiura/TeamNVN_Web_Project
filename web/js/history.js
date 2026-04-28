@@ -110,12 +110,13 @@ function renderUnheld(items) {
         const items = await res.json();
         const now = new Date();
 
+        // 「実施済み」は events 紐付きの有無で判定する。
         const held = items
-            .filter((s) => s.approvalStatus === 2 && s.eventStartDate)
+            .filter((s) => s.eventStartDate)
             .sort((a, b) => new Date(a.eventStartDate) - new Date(b.eventStartDate));
 
         const unheld = items
-            .filter((s) => s.approvalStatus === 0 || s.approvalStatus === 1)
+            .filter((s) => !s.eventStartDate)
             .sort((a, b) => new Date(a.submitDate) - new Date(b.submitDate));
 
         renderHeld(held, now);

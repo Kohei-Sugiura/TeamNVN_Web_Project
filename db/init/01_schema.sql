@@ -12,12 +12,13 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ============================================
 -- weepa_songs（楽曲投稿＝選曲提案）
--- approval_status: -1=却下 / 0=未承認 / 1=承認済み(未実施) / 2=実施済み（過去イベントで使用済み）
+-- approval_status: -1=却下 / 0=未承認 / 1=承認済み
 -- 負値=終端（却下） / 非負=前進パイプライン。"非却下" は approval_status >= 0 で表現。
--- イベント作成時（手動・auto-weekly 双方）で対象曲を 1→2 に遷移。auto-weekly の抽選は status=1 のみ。
--- schedule_order: status=1 の楽曲の開催予定キュー位置。値が小さいほど早く開催。
+-- 「実施済み」は専用ステータスを持たず、weepa_events に紐付いているかで判定する
+-- （e.g. WHERE NOT EXISTS (SELECT 1 FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id)）。
+-- schedule_order: 開催予定キュー（承認済み AND 未使用）の並び順。値が小さいほど早く開催。
 --   - 0→1 (承認) 時に MAX+1 を付与（末尾追加）
---   - 1→2 (イベント作成) / 1→-1 (却下後の差し戻し等) 時に NULL に戻す
+--   - イベント作成時に NULL に戻して新規キューへの混入を防ぐ
 --   - 並び替えは管理画面の「開催スケジュール」タブから行う
 -- ============================================
 CREATE TABLE weepa_songs (

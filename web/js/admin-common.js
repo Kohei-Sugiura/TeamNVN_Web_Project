@@ -112,20 +112,17 @@ function localInputToIso(localStr) {
     return new Date(localStr).toISOString();
 }
 
-function statusLabel(status, withSongImplemented) {
-    const map = { '-1': '却下', '0': '未承認', '1': '承認済み', '2': '実施済み' };
-    const key = String(status);
-    if (!withSongImplemented && key === '2') return '(2)';
-    return map[key] ?? key;
+function statusLabel(status) {
+    const map = { '-1': '却下', '0': '未承認', '1': '承認済み' };
+    return map[String(status)] ?? String(status);
 }
 
-function statusSelectOptions(currentValue, withSongImplemented) {
+function statusSelectOptions(currentValue) {
     const options = [
         { value: -1, label: '-1 却下' },
         { value: 0, label: '0 未承認' },
         { value: 1, label: '1 承認済み' },
     ];
-    if (withSongImplemented) options.push({ value: 2, label: '2 実施済み' });
     return options.map((o) => `<option value="${o.value}"${Number(currentValue) === o.value ? ' selected' : ''}>${o.label}</option>`).join('');
 }
 

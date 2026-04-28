@@ -14,7 +14,7 @@ function effectSelect(name, current) {
 // 各カラムのオプション:
 //   pk: 'auto'(SERIAL) | 'required'(create時に必須入力) | 'optional'(create時任意・nullで自動採番)
 //   computed: true → 結合等の参照専用カラム（編集不可・create時に出さない）
-//   type: 'text' | 'number' | 'nullable-number' | 'datetime' | 'effect' | 'status-song' | 'status-score'
+//   type: 'text' | 'number' | 'nullable-number' | 'datetime' | 'effect' | 'status'
 //   max / min / required などは create フォーム入力の補助
 const TABLES = {
     songs: {
@@ -30,7 +30,7 @@ const TABLES = {
             { key: 'submitName', label: 'submit_name', type: 'text', required: true },
             { key: 'submitReason', label: 'submit_reason', type: 'text' },
             { key: 'submitDate', label: 'submit_date', type: 'datetime' },
-            { key: 'approvalStatus', label: 'status', type: 'status-song' },
+            { key: 'approvalStatus', label: 'status', type: 'status' },
         ],
     },
     events: {
@@ -63,7 +63,7 @@ const TABLES = {
             { key: 'exScore', label: 'ex_score', type: 'nullable-number' },
             { key: 'imagePath', label: 'image_path', type: 'text' },
             { key: 'submitDate', label: 'submit_date', type: 'datetime' },
-            { key: 'approvalStatus', label: 'status', type: 'status-score' },
+            { key: 'approvalStatus', label: 'status', type: 'status' },
         ],
     },
 };
@@ -112,10 +112,8 @@ function inputHtml(col, value, opts = {}) {
             return `<input type="datetime-local" name="${col.key}" value="${isoToLocalInput(value)}"${required}>`;
         case 'effect':
             return effectSelect(col.key, v || EFFECT_OPTIONS[0]);
-        case 'status-song':
-            return `<select name="${col.key}">${statusSelectOptions(value, true)}</select>`;
-        case 'status-score':
-            return `<select name="${col.key}">${statusSelectOptions(value, false)}</select>`;
+        case 'status':
+            return `<select name="${col.key}">${statusSelectOptions(value)}</select>`;
         default:
             return escapeHtml(v);
     }
@@ -130,11 +128,8 @@ function displayHtml(col, value) {
     if (col.type === 'datetime') {
         return escapeHtml(formatDateTime(value));
     }
-    if (col.type === 'status-song') {
-        return value == null ? '' : `${statusLabel(value, true)} (${value})`;
-    }
-    if (col.type === 'status-score') {
-        return value == null ? '' : `${statusLabel(value, false)} (${value})`;
+    if (col.type === 'status') {
+        return value == null ? '' : `${statusLabel(value)} (${value})`;
     }
     if (col.type === 'nullable-number') {
         return value == null ? '-' : escapeHtml(String(value));
@@ -150,8 +145,7 @@ function readInputValue(col, raw) {
             return trimmed === '' ? null : Number(trimmed);
         case 'datetime':
             return localInputToIso(trimmed);
-        case 'status-song':
-        case 'status-score':
+        case 'status':
             return trimmed === '' ? null : Number(trimmed);
         default:
             return trimmed === '' ? null : trimmed;

@@ -325,7 +325,21 @@ public class AdminController : ControllerBase
             await tx.RollbackAsync(ct);
             ModelState.AddModelError(
                 nameof(request.WeepaSongId),
-                "指定された楽曲は承認されていない、もしくは既に実施済みです");
+                "指定された楽曲は承認されていません");
+            return ValidationProblem(ModelState);
+        }
+
+        var alreadyUsed = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT EXISTS (SELECT 1 FROM weepa_events WHERE weepa_song_id = @Id)",
+            new { Id = request.WeepaSongId },
+            transaction: tx,
+            cancellationToken: ct));
+        if (alreadyUsed)
+        {
+            await tx.RollbackAsync(ct);
+            ModelState.AddModelError(
+                nameof(request.WeepaSongId),
+                "指定された楽曲は既にイベントで使用されています");
             return ValidationProblem(ModelState);
         }
 
@@ -345,7 +359,7 @@ public class AdminController : ControllerBase
             cancellationToken: ct));
 
         await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE weepa_songs SET approval_status = 2, schedule_order = NULL WHERE weepa_song_id = @Id",
+            "UPDATE weepa_songs SET schedule_order = NULL WHERE weepa_song_id = @Id",
             new { Id = request.WeepaSongId },
             transaction: tx,
             cancellationToken: ct));
@@ -404,9 +418,12 @@ public class AdminController : ControllerBase
                 x_id            AS "xId",
                 submit_name     AS "submitName",
                 schedule_order  AS "scheduleOrder"
-            FROM weepa_songs
-            WHERE approval_status = 1
-            ORDER BY schedule_order ASC NULLS LAST, weepa_song_id ASC
+            FROM weepa_songs s
+            WHERE s.approval_status = 1
+              AND NOT EXISTS (
+                  SELECT 1 FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id
+              )
+            ORDER BY s.schedule_order ASC NULLS LAST, s.weepa_song_id ASC
             """,
             cancellationToken: ct));
 
@@ -475,9 +492,17 @@ public class AdminController : ControllerBase
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
 
-        // 念の為 status=1 の全件と渡された ID 集合を確認
+        // 念の為「キュー対象」(承認済み かつ 未開催) の全件と渡された ID 集合を確認
         var approvedIds = (await conn.QueryAsync<int>(new CommandDefinition(
-            "SELECT weepa_song_id FROM weepa_songs WHERE approval_status = 1 FOR UPDATE",
+            """
+            SELECT s.weepa_song_id
+            FROM weepa_songs s
+            WHERE s.approval_status = 1
+              AND NOT EXISTS (
+                  SELECT 1 FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id
+              )
+            FOR UPDATE
+            """,
             transaction: tx, cancellationToken: ct))).ToHashSet();
 
         if (request.Order.Length != approvedIds.Count
@@ -554,13 +579,16 @@ public class AdminController : ControllerBase
             return Conflict(new { message = "重複する開催期間のイベントが既に存在します" });
         }
 
-        // 開催スケジュール先頭の楽曲を選出。schedule_order が NULL の曲は末尾扱い（基本起こらない想定）。
+        // 開催スケジュール先頭の楽曲を選出。「実施済み」状態は events に紐付いているかで判定する。
         var weepaSongId = await conn.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
             """
-            SELECT weepa_song_id
-            FROM weepa_songs
-            WHERE approval_status = 1
-            ORDER BY schedule_order ASC NULLS LAST, weepa_song_id ASC
+            SELECT s.weepa_song_id
+            FROM weepa_songs s
+            WHERE s.approval_status = 1
+              AND NOT EXISTS (
+                  SELECT 1 FROM weepa_events e WHERE e.weepa_song_id = s.weepa_song_id
+              )
+            ORDER BY s.schedule_order ASC NULLS LAST, s.weepa_song_id ASC
             LIMIT 1
             FOR UPDATE SKIP LOCKED
             """,
@@ -589,7 +617,7 @@ public class AdminController : ControllerBase
             cancellationToken: ct));
 
         await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE weepa_songs SET approval_status = 2, schedule_order = NULL WHERE weepa_song_id = @Id",
+            "UPDATE weepa_songs SET schedule_order = NULL WHERE weepa_song_id = @Id",
             new { Id = weepaSongId.Value },
             transaction: tx,
             cancellationToken: ct));
