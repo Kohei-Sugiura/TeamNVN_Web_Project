@@ -8,4 +8,6 @@ public sealed class RankingEntry
     public int Score { get; init; }
     public int? ExScore { get; init; }
     public DateTimeOffset SubmitDate { get; init; }
+    public DateTimeOffset LastSubmitDate { get; init; }
+    public int UpdateCount { get; init; }
 }

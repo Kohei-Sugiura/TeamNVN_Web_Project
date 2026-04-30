@@ -32,7 +32,9 @@ public class EventsController : ControllerBase
                 s.effect         AS "Effect",
                 e.start_date     AS "StartDate",
                 e.end_date       AS "EndDate",
-                e.tallied_at     AS "TalliedAt"
+                e.tallied_at     AS "TalliedAt",
+                s.submit_name    AS "SubmitName",
+                s.submit_reason  AS "SubmitReason"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             ORDER BY e.start_date DESC
@@ -57,7 +59,9 @@ public class EventsController : ControllerBase
                 s.effect         AS "Effect",
                 e.start_date     AS "StartDate",
                 e.end_date       AS "EndDate",
-                e.tallied_at     AS "TalliedAt"
+                e.tallied_at     AS "TalliedAt",
+                s.submit_name    AS "SubmitName",
+                s.submit_reason  AS "SubmitReason"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE e.end_date < NOW()
@@ -82,7 +86,9 @@ public class EventsController : ControllerBase
                 s.effect         AS "Effect",
                 e.start_date     AS "StartDate",
                 e.end_date       AS "EndDate",
-                e.tallied_at     AS "TalliedAt"
+                e.tallied_at     AS "TalliedAt",
+                s.submit_name    AS "SubmitName",
+                s.submit_reason  AS "SubmitReason"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE NOW() BETWEEN e.start_date AND e.end_date
@@ -108,7 +114,9 @@ public class EventsController : ControllerBase
                 s.effect         AS "Effect",
                 e.start_date     AS "StartDate",
                 e.end_date       AS "EndDate",
-                e.tallied_at     AS "TalliedAt"
+                e.tallied_at     AS "TalliedAt",
+                s.submit_name    AS "SubmitName",
+                s.submit_reason  AS "SubmitReason"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE e.weepa_event_id = @Id
@@ -127,7 +135,17 @@ public class EventsController : ControllerBase
     public async Task<IActionResult> Ranking(int id, CancellationToken ct)
     {
         const string sql = """
-            WITH best AS (
+            WITH per_user AS (
+                SELECT
+                    x_id,
+                    MAX(submit_date) AS last_submit_date,
+                    COUNT(*) AS update_count
+                FROM weepa_scores
+                WHERE weepa_event_id = @EventId
+                  AND approval_status = 1
+                GROUP BY x_id
+            ),
+            best AS (
                 SELECT DISTINCT ON (x_id)
                     x_id,
                     submit_name,
@@ -141,14 +159,17 @@ public class EventsController : ControllerBase
             )
             SELECT
                 ROW_NUMBER() OVER (
-                    ORDER BY score DESC, ex_score DESC NULLS LAST, submit_date ASC
-                ) AS "Rank",
-                x_id         AS "XId",
-                submit_name  AS "SubmitName",
-                score        AS "Score",
-                ex_score     AS "ExScore",
-                submit_date  AS "SubmitDate"
-            FROM best
+                    ORDER BY b.score DESC, b.ex_score DESC NULLS LAST, b.submit_date ASC
+                )                  AS "Rank",
+                b.x_id              AS "XId",
+                b.submit_name       AS "SubmitName",
+                b.score             AS "Score",
+                b.ex_score          AS "ExScore",
+                b.submit_date       AS "SubmitDate",
+                p.last_submit_date  AS "LastSubmitDate",
+                p.update_count      AS "UpdateCount"
+            FROM best b
+            JOIN per_user p ON p.x_id = b.x_id
             ORDER BY "Rank"
             """;
 

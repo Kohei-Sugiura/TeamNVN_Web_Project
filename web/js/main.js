@@ -34,6 +34,12 @@ function isTallied(ev) {
 
 function activeCard(ev) {
   const url = `/weepa/score/?eventId=${encodeURIComponent(ev.weepaEventId)}`;
+  const submitter = ev.submitName
+    ? `<p class="submitter">提案者: ${escapeHtml(ev.submitName)}</p>`
+    : '';
+  const reason = ev.submitReason
+    ? `<p class="submit-reason"><span class="label">選曲理由:</span> ${escapeHtml(ev.submitReason)}</p>`
+    : '';
   return `
     <section class="weepa-status-card">
       <h3 class="weepa-status-title">現在開催中</h3>
@@ -43,6 +49,8 @@ function activeCard(ev) {
           <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
         </div>
         <p class="period">開催期間: ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
+        ${submitter}
+        ${reason}
         <p class="event-link-wrap"><a class="event-link" href="${url}">スコアを投稿する</a></p>
       </div>
     </section>

@@ -49,31 +49,87 @@ function renderEventHeader(ev) {
   `;
 }
 
+const rankingState = {
+  entries: [],
+  sortKey: 'rank',
+  sortDir: 'asc',
+};
+
+const SORTABLE_COLUMNS = {
+  rank: { label: '#', defaultDir: 'asc', getValue: (e) => e.rank },
+  score: { label: 'スコア', defaultDir: 'desc', getValue: (e) => e.score },
+  exScore: { label: 'EXスコア', defaultDir: 'desc', getValue: (e) => (e.exScore == null ? -Infinity : e.exScore) },
+  lastSubmitDate: { label: '最終投稿日時', defaultDir: 'desc', getValue: (e) => new Date(e.lastSubmitDate).getTime() },
+  updateCount: { label: 'スコア更新回数', defaultDir: 'desc', getValue: (e) => e.updateCount },
+};
+
+function compareEntries(a, b, key, dir) {
+  const col = SORTABLE_COLUMNS[key];
+  const av = col.getValue(a);
+  const bv = col.getValue(b);
+  let cmp = 0;
+  if (av < bv) cmp = -1;
+  else if (av > bv) cmp = 1;
+  if (cmp === 0) cmp = a.rank - b.rank;
+  return dir === 'asc' ? cmp : -cmp;
+}
+
+function sortIndicator(key) {
+  if (rankingState.sortKey !== key) return '';
+  return rankingState.sortDir === 'asc' ? ' ▲' : ' ▼';
+}
+
 function renderRanking(entries) {
   rankingSection.hidden = false;
+  rankingState.entries = entries || [];
   if (!entries || entries.length === 0) {
     rankingDisplay.innerHTML = '<p class="empty">まだランキングがありません。</p>';
     return;
   }
-  const rows = entries.map((e) => `
+  drawRankingTable();
+}
+
+function drawRankingTable() {
+  const sorted = [...rankingState.entries].sort((a, b) =>
+    compareEntries(a, b, rankingState.sortKey, rankingState.sortDir));
+  const rows = sorted.map((e) => `
     <tr>
+      <td class="rank">${e.rank}</td>
       <td class="name">${escapeHtml(e.submitName)}</td>
       <td class="score">${formatScore(e.score)}</td>
       <td class="ex">${e.exScore != null ? formatScore(e.exScore) : '-'}</td>
+      <td class="last-submit">${escapeHtml(formatDate(e.lastSubmitDate))}</td>
+      <td class="update-count">${e.updateCount}</td>
     </tr>
   `).join('');
   rankingDisplay.innerHTML = `
-    <table class="ranking-table">
+    <table class="ranking-table sortable-table">
       <thead>
         <tr>
+          <th class="sortable" data-sort="rank">#${sortIndicator('rank')}</th>
           <th>投稿者名</th>
-          <th>スコア</th>
-          <th>EXスコア</th>
+          <th class="sortable" data-sort="score">スコア${sortIndicator('score')}</th>
+          <th class="sortable" data-sort="exScore">EXスコア${sortIndicator('exScore')}</th>
+          <th class="sortable" data-sort="lastSubmitDate">最終投稿日時${sortIndicator('lastSubmitDate')}</th>
+          <th class="sortable" data-sort="updateCount">スコア更新回数${sortIndicator('updateCount')}</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
   `;
+  rankingDisplay.querySelectorAll('th.sortable').forEach((th) => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      if (!SORTABLE_COLUMNS[key]) return;
+      if (rankingState.sortKey === key) {
+        rankingState.sortDir = rankingState.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        rankingState.sortKey = key;
+        rankingState.sortDir = SORTABLE_COLUMNS[key].defaultDir;
+      }
+      drawRankingTable();
+    });
+  });
 }
 
 function showEventError(message) {

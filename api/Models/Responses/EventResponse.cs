@@ -9,4 +9,6 @@ public sealed class EventResponse
     public DateTimeOffset StartDate { get; init; }
     public DateTimeOffset EndDate { get; init; }
     public DateTimeOffset? TalliedAt { get; init; }
+    public string SubmitName { get; init; } = string.Empty;
+    public string? SubmitReason { get; init; }
 }

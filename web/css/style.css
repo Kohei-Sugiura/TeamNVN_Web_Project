@@ -774,6 +774,48 @@ span.effect.effect-ult {
   white-space: nowrap;
 }
 
+.ranking-table .rank {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #9090b0;
+  width: 3em;
+}
+
+.ranking-table .last-submit {
+  font-variant-numeric: tabular-nums;
+  color: #9090b0;
+  white-space: nowrap;
+}
+
+.ranking-table .update-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #9090b0;
+}
+
+.ranking-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.ranking-table th.sortable:hover {
+  color: #ff3d8a;
+  text-shadow: 0 0 6px rgba(255, 61, 138, 0.5);
+}
+
+.weepa-status-body .submitter,
+.weepa-status-body .submit-reason {
+  margin: 6px 0 0;
+  font-size: 0.9rem;
+  color: #c0c0d8;
+  letter-spacing: 0.02em;
+}
+
+.weepa-status-body .submit-reason .label {
+  color: #00e5ff;
+  margin-right: 4px;
+}
+
 .queue-table tbody tr[draggable="true"] {
   cursor: grab;
 }
