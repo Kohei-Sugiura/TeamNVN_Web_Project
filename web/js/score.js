@@ -2,6 +2,10 @@ const form = document.getElementById('score-form');
 const btn = document.getElementById('submit-btn');
 const resultEl = document.getElementById('result');
 const eventDisplay = document.getElementById('event-display');
+const dialog = document.getElementById('confirm-dialog');
+const confirmBody = document.getElementById('confirm-body');
+const confirmOkBtn = document.getElementById('confirm-ok');
+const confirmCancelBtn = document.getElementById('confirm-cancel');
 
 const fieldKeys = ['xId', 'submitName', 'score', 'exScore', 'image'];
 
@@ -17,6 +21,11 @@ function formatDate(iso) {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit',
   });
+}
+
+function formatNum(n) {
+  if (n === '' || n == null) return '';
+  return Number(n).toLocaleString('en-US');
 }
 
 function clearErrors() {
@@ -107,21 +116,61 @@ let currentEventId = null;
   }
 })();
 
-form.addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  clearErrors();
+function getFormSnapshot() {
+  return {
+    xId: form.xId.value.trim(),
+    submitName: form.submitName.value.trim(),
+    score: form.score.value,
+    exScore: form.exScore.value,
+    imageFile: form.image.files[0] || null,
+  };
+}
 
+function renderConfirm(snap) {
+  confirmBody.innerHTML = `
+    <dl>
+      <dt>X (Twitter) ID</dt>
+      <dd>${snap.xId ? escapeHtml(snap.xId) : '<span class="muted">(未入力)</span>'}</dd>
+      <dt>投稿者名</dt>
+      <dd>${snap.submitName ? escapeHtml(snap.submitName) : '<span class="muted">(未入力)</span>'}</dd>
+      <dt>スコア</dt>
+      <dd>${snap.score !== '' ? escapeHtml(formatNum(snap.score)) : '<span class="muted">(未入力)</span>'}</dd>
+      <dt>EXスコア</dt>
+      <dd>${snap.exScore !== '' ? escapeHtml(formatNum(snap.exScore)) : '<span class="muted">(なし)</span>'}</dd>
+      <dt>リザルト画像</dt>
+      <dd id="confirm-image-slot">${snap.imageFile
+        ? `<span class="muted">読み込み中...</span>`
+        : '<span class="muted">(未選択)</span>'}</dd>
+    </dl>
+  `;
+
+  if (snap.imageFile) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const slot = document.getElementById('confirm-image-slot');
+      if (!slot) return;
+      slot.innerHTML = `<img class="preview" alt="リザルト画像プレビュー" src="${reader.result}">`;
+    };
+    reader.onerror = () => {
+      const slot = document.getElementById('confirm-image-slot');
+      if (slot) slot.innerHTML = '<span class="muted">プレビュー生成失敗</span>';
+    };
+    reader.readAsDataURL(snap.imageFile);
+  }
+}
+
+async function actuallySubmit(snap) {
   if (currentEventId == null) return;
 
   const fd = new FormData();
-  fd.append('xId', form.xId.value.trim());
-  fd.append('submitName', form.submitName.value.trim());
-  fd.append('score', form.score.value);
-  if (form.exScore.value !== '') {
-    fd.append('exScore', form.exScore.value);
+  fd.append('xId', snap.xId);
+  fd.append('submitName', snap.submitName);
+  fd.append('score', snap.score);
+  if (snap.exScore !== '') {
+    fd.append('exScore', snap.exScore);
   }
-  if (form.image.files[0]) {
-    fd.append('image', form.image.files[0]);
+  if (snap.imageFile) {
+    fd.append('image', snap.imageFile);
   }
 
   btn.disabled = true;
@@ -158,4 +207,20 @@ form.addEventListener('submit', async (ev) => {
     btn.disabled = false;
     resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
+}
+
+form.addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  clearErrors();
+  if (currentEventId == null) return;
+  const snap = getFormSnapshot();
+  renderConfirm(snap);
+  dialog.showModal();
+});
+
+confirmCancelBtn.addEventListener('click', () => dialog.close());
+
+confirmOkBtn.addEventListener('click', async () => {
+  dialog.close();
+  await actuallySubmit(getFormSnapshot());
 });
