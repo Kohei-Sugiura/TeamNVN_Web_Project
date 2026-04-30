@@ -32,3 +32,6 @@ dist/
 
 # アップロード画像（本番データを誤ってコミットしないように）
 uploads/
+
+# 一時バックアップ (deploy/setup-ssl.sh が default.conf.bak.<timestamp> を作る)
+*.bak.*

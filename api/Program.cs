@@ -1,8 +1,10 @@
 using Npgsql;
+using Weepa.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+builder.Services.AddHttpClient();
 
 builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
 {
@@ -12,6 +14,9 @@ builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
             "ConnectionStrings:Default is not configured");
     return new NpgsqlDataSourceBuilder(connectionString).Build();
 });
+
+builder.Services.AddSingleton<IDiscordNotifier, DiscordNotifier>();
+builder.Services.AddSingleton<WeepaAdminClient>();
 
 var app = builder.Build();
 

@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using Weepa.Api.Models.Requests;
+using Weepa.Api.Services;
 using Weepa.Api.Validation;
 
 namespace Weepa.Api.Controllers;
@@ -11,10 +12,12 @@ namespace Weepa.Api.Controllers;
 public class SongsController : ControllerBase
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly IDiscordNotifier _discord;
 
-    public SongsController(NpgsqlDataSource dataSource)
+    public SongsController(NpgsqlDataSource dataSource, IDiscordNotifier discord)
     {
         _dataSource = dataSource;
+        _discord = discord;
     }
 
     [HttpGet]
@@ -72,20 +75,28 @@ public class SongsController : ControllerBase
             RETURNING weepa_song_id
             """;
 
+        var trimmedSong = request.Song.Trim();
+        var trimmedName = request.SubmitName.Trim();
+        var trimmedReason = string.IsNullOrWhiteSpace(request.SubmitReason)
+            ? null
+            : request.SubmitReason.Trim();
+
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
         var id = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
             sql,
             new
             {
-                Song = request.Song.Trim(),
+                Song = trimmedSong,
                 Effect = request.Effect,
                 XId = normalizedXId,
-                SubmitName = request.SubmitName.Trim(),
-                SubmitReason = string.IsNullOrWhiteSpace(request.SubmitReason)
-                    ? null
-                    : request.SubmitReason.Trim(),
+                SubmitName = trimmedName,
+                SubmitReason = trimmedReason,
             },
             cancellationToken: ct));
+
+        // 投稿成功 → Discord 通知 (fire-and-forget; 失敗してもユーザーには影響なし)
+        _ = _discord.NotifySongSubmittedAsync(new SongSubmittedNotification(
+            id, trimmedSong, request.Effect, normalizedXId, trimmedName, trimmedReason));
 
         return Ok(new { weepaSongId = id });
     }

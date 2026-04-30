@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using Weepa.Api.Models.Requests;
+using Weepa.Api.Services;
 using Weepa.Api.Validation;
 
 namespace Weepa.Api.Controllers;
@@ -23,12 +24,19 @@ public class ScoresController : ControllerBase
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<ScoresController> _logger;
+    private readonly IDiscordNotifier _discord;
 
-    public ScoresController(NpgsqlDataSource dataSource, ILogger<ScoresController> logger)
+    public ScoresController(
+        NpgsqlDataSource dataSource,
+        ILogger<ScoresController> logger,
+        IDiscordNotifier discord)
     {
         _dataSource = dataSource;
         _logger = logger;
+        _discord = discord;
     }
+
+    private sealed record EventState(bool InPeriod, string Song, string Effect);
 
     [HttpPost]
     [RequestSizeLimit(25_000_000)]
@@ -67,15 +75,17 @@ public class ScoresController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        // 3. イベント存在 + 受付期間内チェック
+        // 3. イベント存在 + 受付期間内チェック (+ Discord 通知用に song/effect も取得)
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
-        var eventState = await conn.QuerySingleOrDefaultAsync<(bool exists, bool inPeriod)?>(
+        var eventState = await conn.QuerySingleOrDefaultAsync<EventState>(
             new CommandDefinition("""
                 SELECT
-                    TRUE AS exists,
-                    (NOW() BETWEEN start_date AND end_date) AS in_period
-                FROM weepa_events
-                WHERE weepa_event_id = @EventId
+                    (NOW() BETWEEN e.start_date AND e.end_date) AS "InPeriod",
+                    s.song   AS "Song",
+                    s.effect AS "Effect"
+                FROM weepa_events e
+                JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
+                WHERE e.weepa_event_id = @EventId
                 """,
                 new { EventId = eventId },
                 cancellationToken: ct));
@@ -84,7 +94,7 @@ public class ScoresController : ControllerBase
         {
             return NotFound(new { message = $"event_id {eventId} が見つかりません" });
         }
-        if (!eventState.Value.inPeriod)
+        if (!eventState.InPeriod)
         {
             return BadRequest(new { message = "現在このイベントは投稿を受け付けていません" });
         }
@@ -145,6 +155,19 @@ public class ScoresController : ControllerBase
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
                 new { message = "投稿処理が混み合っています。時間を置いて再度お試しください" });
         }
+
+        // Discord 通知 (fire-and-forget)
+        _ = _discord.NotifyScoreSubmittedAsync(new ScoreSubmittedNotification(
+            eventId,
+            submitId.Value,
+            normalizedXId,
+            request.SubmitName,
+            request.Score,
+            request.ExScore,
+            eventState.Song,
+            eventState.Effect,
+            fullPath,
+            image.ContentType));
 
         return Ok(new { message = "ok" });
     }
