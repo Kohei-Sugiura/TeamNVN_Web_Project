@@ -7,10 +7,6 @@ const publishStatusEl = document.getElementById('publish-status');
 const rankingSection = document.getElementById('ranking-section');
 const rankingDisplay = document.getElementById('ranking-display');
 
-function formatScore(n) {
-    return Number(n).toLocaleString('en-US');
-}
-
 function formatYmd(iso) {
     if (!iso) return '';
     const d = new Date(iso);
@@ -37,26 +33,7 @@ function renderEventHeader(ev) {
 
 function renderRanking(entries) {
     rankingSection.hidden = false;
-    if (!entries || entries.length === 0) {
-        rankingDisplay.innerHTML = '<p class="empty">ランキング対象のスコアがありません。</p>';
-        return;
-    }
-    const rows = entries.map((e) => `
-      <tr>
-        <td class="ex">${e.rank}</td>
-        <td class="name">${escapeHtml(e.submitName)}</td>
-        <td class="score">${formatScore(e.score)}</td>
-        <td class="ex">${e.exScore != null ? formatScore(e.exScore) : '-'}</td>
-      </tr>
-    `).join('');
-    rankingDisplay.innerHTML = `
-      <table class="ranking-table">
-        <thead>
-          <tr><th>#</th><th>投稿者名</th><th>スコア</th><th>EXスコア</th></tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    `;
+    renderRankingTable(rankingDisplay, entries);
 }
 
 function showError(message) {

@@ -35,10 +35,10 @@ function isTallied(ev) {
 function activeCard(ev) {
   const url = `/weepa/score/?eventId=${encodeURIComponent(ev.weepaEventId)}`;
   const submitter = ev.submitName
-    ? `<p class="submitter">提案者: ${escapeHtml(ev.submitName)}</p>`
+    ? `<p class="info-row"><span class="label">提案者:</span> ${escapeHtml(ev.submitName)}</p>`
     : '';
   const reason = ev.submitReason
-    ? `<p class="submit-reason"><span class="label">選曲理由:</span> ${escapeHtml(ev.submitReason)}</p>`
+    ? `<p class="info-row"><span class="label">選曲理由:</span> ${escapeHtml(ev.submitReason)}</p>`
     : '';
   return `
     <section class="weepa-status-card">
@@ -48,7 +48,7 @@ function activeCard(ev) {
           <span class="song">${escapeHtml(ev.song)}</span>
           <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
         </div>
-        <p class="period">開催期間: ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
+        <p class="info-row"><span class="label">開催期間:</span> ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
         ${submitter}
         ${reason}
         <p class="event-link-wrap"><a class="event-link" href="${url}">スコアを投稿する</a></p>
@@ -68,7 +68,7 @@ function recentEntry(ev, now) {
         <span class="song">${escapeHtml(ev.song)}</span>
         <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
       </div>
-      <p class="period">開催期間: ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
+      <p class="info-row"><span class="label">開催期間:</span> ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
       <p class="event-link-wrap">${action}</p>
     </div>
   `;

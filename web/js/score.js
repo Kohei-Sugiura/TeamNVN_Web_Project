@@ -85,10 +85,15 @@ let currentEventId = null;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       ev = await res.json();
     } else {
+      // eventId 未指定 → 現在開催中のイベントを取得し、URL を eventId 付きに置換 (シェア可能化)
       const res = await fetch('/api/events/current');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       ev = body.event;
+      if (ev) {
+        window.location.replace(`/weepa/score/?eventId=${encodeURIComponent(ev.weepaEventId)}`);
+        return;
+      }
     }
 
     if (!ev) {
