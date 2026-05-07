@@ -5,6 +5,19 @@
   box-sizing: border-box;
 }
 
+/* ブラウザは form 要素 (button/input/select/textarea) のフォントを継承しないので、
+   明示的に body のフォントを継承させる。これがないと Android Chrome 等でボタンや
+   入力欄が OS デフォルト (Roboto 等) に化ける。 */
+button,
+input,
+select,
+textarea,
+optgroup {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
 html,
 body {
   min-height: 100%;
@@ -12,8 +25,10 @@ body {
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
-    "Hiragino Sans", "Noto Sans JP", sans-serif;
+  /* Noto Sans JP を Google Fonts から読み込み済 (各 HTML の <head>)。
+     ロード完了前はシステムフォントに自動フォールバックする。 */
+  font-family: "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Helvetica Neue", "Hiragino Sans", sans-serif;
   color: #eaeaf0;
   line-height: 1.6;
   background-color: #050514;
@@ -902,10 +917,11 @@ span.effect.effect-ult {
 /* PUC (10,000,000) 専用の豪華スタイル。dark background 向けに、
    メリハリのある黄金グラデ + 控えめな焦げ茶アウトライン + 軽めのグロウ。 */
 .ranking-table.ranking-detail-table td.score.score-puc {
-  font-family: 'Impact', 'Arial Black', 'Hiragino Sans W9', 'Yu Gothic', sans-serif;
-  font-size: 1.4em;
+  /* Google Fonts の Bowlby One を採用 (極太丸ゴシック系)。OS 横断で同じ見た目になる。
+     Bowlby One 自体が視覚的に大きいので font-size は他の行と揃える。 */
+  font-family: 'Bowlby One', 'Arial Black', 'Hiragino Sans W9', sans-serif;
   font-style: italic;
-  font-weight: 900;
+  font-weight: 400;
   letter-spacing: 0.04em;
   background: linear-gradient(180deg,
     #ffe066 0%,
@@ -922,8 +938,6 @@ span.effect.effect-ult {
   filter:
     drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.6))
     drop-shadow(0 0 12px rgba(255, 140, 0, 0.65));
-  padding-top: 3px;
-  padding-bottom: 3px;
 }
 
 /* トップページの WeePA カード (active / recent) で使う情報行を統一スタイルに。
