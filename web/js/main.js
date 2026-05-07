@@ -20,6 +20,14 @@ function formatYmd(iso) {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function formatYmdHm(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const ymd = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${ymd} ${hm}`;
+}
+
 function isActive(ev, now) {
   return new Date(ev.startDate) <= now && now < new Date(ev.endDate);
 }
@@ -48,7 +56,7 @@ function activeCard(ev) {
           <span class="song">${escapeHtml(ev.song)}</span>
           <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
         </div>
-        <p class="info-row"><span class="label">開催期間:</span> ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
+        <p class="info-row"><span class="label">開催期間:</span> ${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
         ${submitter}
         ${reason}
         <p class="event-link-wrap"><a class="event-link" href="${url}">スコアを投稿する</a></p>
@@ -68,7 +76,7 @@ function recentEntry(ev, now) {
         <span class="song">${escapeHtml(ev.song)}</span>
         <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
       </div>
-      <p class="info-row"><span class="label">開催期間:</span> ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
+      <p class="info-row"><span class="label">開催期間:</span> ${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
       <p class="event-link-wrap">${action}</p>
     </div>
   `;
