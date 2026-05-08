@@ -33,8 +33,8 @@ body {
   line-height: 1.6;
   background-color: #050514;
   background-image:
-    repeating-linear-gradient(135deg, transparent 0 79px, rgba(0, 229, 255, 0.035) 79px 80px),
-    repeating-linear-gradient(45deg, transparent 0 119px, rgba(255, 61, 138, 0.03) 119px 120px),
+    repeating-linear-gradient(135deg, transparent 0 79px, rgba(0, 229, 255, 0.18) 79px 80px),
+    repeating-linear-gradient(45deg, transparent 0 119px, rgba(255, 61, 138, 0.20) 119px 120px),
     radial-gradient(ellipse at 50% -10%, #1e1044 0%, #0a0a22 45%, #030310 100%);
   background-attachment: fixed;
   min-height: 100vh;
@@ -115,16 +115,9 @@ a:hover {
 }
 
 .site-header h1 {
+  /* h1 自体には背景指定せず、グラデは .site-header-name に当てる
+     (h1 に当てると左にあるアイコン領域に cyan 部分が消費されてしまうため) */
   margin: 0;
-  font-size: 2.4rem;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-  background: linear-gradient(90deg, #00e5ff 0%, #bb00ff 35%, #ff3d8a 65%, #e60033 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  filter: drop-shadow(0 0 16px rgba(230, 0, 51, 0.4));
 }
 
 .site-header h1 a,
@@ -132,11 +125,6 @@ a:hover {
 .site-header h1 a:visited,
 .site-header h1 a:hover,
 .site-header h1 a:active {
-  color: inherit;
-  -webkit-text-fill-color: inherit;
-  background: inherit;
-  -webkit-background-clip: text;
-  background-clip: text;
   text-decoration: none;
   text-shadow: none;
   cursor: pointer;
@@ -153,8 +141,15 @@ a:hover {
 .site-header-name {
   display: inline-block;
   vertical-align: middle;
+  font-size: 2.4rem;
+  font-weight: 900;
   letter-spacing: 0.02em;
-  /* h1 のグラデ + clip-text を継承するので color/background は弄らない */
+  background: linear-gradient(90deg, #00e5ff 0%, #bb00ff 50%, #ff3d8a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 0 12px rgba(255, 61, 138, 0.35));
 }
 
 .subtitle {
@@ -1433,9 +1428,9 @@ dialog.confirm-dialog .dialog-actions button.cancel:hover {
     padding-bottom: 14px;
   }
 
-  .site-header h1 {
+  .site-header-name {
     font-size: 1.8rem;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.04em;
   }
 
   .site-header-logo {
@@ -1574,12 +1569,18 @@ dialog.confirm-dialog .dialog-actions button.cancel:hover {
  * ダークテーマの装飾を抑え、白地+黒文字の読めるレイアウトに切替える。
  * ============================================ */
 @media print {
-  /* 全体: 白地・黒文字、ネオンの text-shadow / box-shadow を消す */
+  /* 全体: 白地ベースに cyan / pink の薄い斜線パターン (Web 版のスキャンライン
+     のニュアンスを残す)。print-color-adjust: exact でブラウザが「インク節約」
+     で背景を捨てるのを抑止。 */
   body {
     background: #ffffff !important;
-    background-image: none !important;
+    background-image:
+      repeating-linear-gradient(135deg, transparent 0 79px, rgba(0, 229, 255, 0.10) 79px 80px),
+      repeating-linear-gradient(45deg, transparent 0 119px, rgba(255, 61, 138, 0.07) 119px 120px) !important;
     background-attachment: scroll !important;
     color: #111 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   * {
