@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using Weepa.Api.Services;
 
@@ -30,18 +31,33 @@ public class DiscordInteractionsController : ControllerBase
     // Text Input style
     private const int TEXT_INPUT_SHORT = 1;
 
+    // Response message flag
+    private const int FLAG_EPHEMERAL = 64;
+
+    // Interaction Response type for deferred channel message
+    private const int RESP_DEFERRED_CHANNEL_MESSAGE = 5;
+
     private readonly WeepaAdminClient _admin;
     private readonly IConfiguration _config;
     private readonly ILogger<DiscordInteractionsController> _logger;
+    private readonly Npgsql.NpgsqlDataSource _dataSource;
+    private readonly DiscordCommandClient _cmd;
+    private readonly RankingScreenshot _shot;
 
     public DiscordInteractionsController(
         WeepaAdminClient admin,
         IConfiguration config,
-        ILogger<DiscordInteractionsController> logger)
+        ILogger<DiscordInteractionsController> logger,
+        Npgsql.NpgsqlDataSource dataSource,
+        DiscordCommandClient cmd,
+        RankingScreenshot shot)
     {
         _admin = admin;
         _config = config;
         _logger = logger;
+        _dataSource = dataSource;
+        _cmd = cmd;
+        _shot = shot;
     }
 
     [HttpPost("interactions")]
@@ -104,6 +120,11 @@ public class DiscordInteractionsController : ControllerBase
             return Json(new { type = RESP_PONG });
         }
 
+        if (type == TYPE_APPLICATION_COMMAND)
+        {
+            return HandleApplicationCommand(root);
+        }
+
         if (type == TYPE_MESSAGE_COMPONENT)
         {
             return await HandleComponentAsync(root, ct);
@@ -117,8 +138,100 @@ public class DiscordInteractionsController : ControllerBase
         return Json(new
         {
             type = RESP_CHANNEL_MESSAGE,
-            data = new { content = "未対応のインタラクションです", flags = 64 },
+            data = new { content = "未対応のインタラクションです", flags = FLAG_EPHEMERAL },
         });
+    }
+
+    private IActionResult HandleApplicationCommand(JsonElement root)
+    {
+        var data = root.GetProperty("data");
+        var name = data.GetProperty("name").GetString() ?? "";
+        var token = root.GetProperty("token").GetString() ?? "";
+
+        if (name == "weepa-result")
+        {
+            int? eventId = null;
+            if (data.TryGetProperty("options", out var opts))
+            {
+                foreach (var opt in opts.EnumerateArray())
+                {
+                    if (opt.GetProperty("name").GetString() == "id" &&
+                        opt.TryGetProperty("value", out var v) &&
+                        v.TryGetInt32(out var i))
+                    {
+                        eventId = i;
+                    }
+                }
+            }
+            // 3 秒以内に応答が必要なので一旦 deferred を返してから裏で生成
+            _ = Task.Run(() => HandleWeepaResultAsync(token, eventId));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        return Json(new
+        {
+            type = RESP_CHANNEL_MESSAGE,
+            data = new { content = $"未対応のコマンド: /{name}", flags = FLAG_EPHEMERAL },
+        });
+    }
+
+    private async Task HandleWeepaResultAsync(string token, int? eventId)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+
+            // 対象イベントの解決
+            int targetId;
+            string label;
+            if (eventId.HasValue)
+            {
+                var exists = await conn.ExecuteScalarAsync<int?>(
+                    "SELECT weepa_event_id FROM weepa_events WHERE weepa_event_id = @Id",
+                    new { Id = eventId.Value });
+                if (exists is null)
+                {
+                    await _cmd.FollowUpTextAsync(
+                        token, $"❌ event_id {eventId.Value} は存在しません", ephemeral: true);
+                    return;
+                }
+                targetId = eventId.Value;
+                label = $"event #{targetId}";
+            }
+            else
+            {
+                // 直近開催 = start_date が NOW 以前で最新
+                var latest = await conn.QuerySingleOrDefaultAsync<int?>(
+                    """
+                    SELECT weepa_event_id FROM weepa_events
+                    WHERE start_date <= NOW()
+                    ORDER BY start_date DESC
+                    LIMIT 1
+                    """);
+                if (latest is null)
+                {
+                    await _cmd.FollowUpTextAsync(
+                        token, "❌ まだ開催されたイベントがありません", ephemeral: true);
+                    return;
+                }
+                targetId = latest.Value;
+                label = $"直近開催 (event #{targetId})";
+            }
+
+            var png = await _shot.CaptureRankingAsync(targetId);
+            await _cmd.FollowUpWithImageAsync(
+                token,
+                $"🏆 集計結果 ({label})",
+                png,
+                $"weepa-result-{targetId}.png");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "weepa-result handler failed");
+            await _cmd.FollowUpTextAsync(
+                token, $"❌ 画像生成中にエラーが発生しました: {ex.Message}",
+                ephemeral: true);
+        }
     }
 
     private async Task<IActionResult> HandleComponentAsync(

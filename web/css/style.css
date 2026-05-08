@@ -1568,3 +1568,121 @@ dialog.confirm-dialog .dialog-actions button.cancel:hover {
     padding: 12px 14px 14px;
   }
 }
+
+/* ============================================
+ * Print / PDF 用スタイル (iPhone の "PDFを作成" 等)
+ * ダークテーマの装飾を抑え、白地+黒文字の読めるレイアウトに切替える。
+ * ============================================ */
+@media print {
+  /* 全体: 白地・黒文字、ネオンの text-shadow / box-shadow を消す */
+  body {
+    background: #ffffff !important;
+    background-image: none !important;
+    background-attachment: scroll !important;
+    color: #111 !important;
+  }
+
+  * {
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Site header: グラデ文字をベタ黒に、下線も控えめに */
+  .site-header::after {
+    display: none !important;
+  }
+  .site-header h1,
+  .site-header-name,
+  .container > h1,
+  .weepa-tagline {
+    background: none !important;
+    -webkit-background-clip: initial !important;
+    background-clip: initial !important;
+    -webkit-text-fill-color: initial !important;
+    color: #111 !important;
+    filter: none !important;
+  }
+  .subtitle {
+    color: #444 !important;
+  }
+
+  /* パネル系の半透明ダーク背景を解除 */
+  .announcement,
+  .form,
+  .ranking-section,
+  .event-card,
+  .weepa-status-card {
+    background: #fff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #ccc !important;
+  }
+  .weepa-status-card {
+    background: #f8f8fb !important;
+  }
+  .weepa-status-title {
+    color: #0050a0 !important;
+  }
+
+  /* テーブル: ヘッダのグラデ廃止、文字はベタ黒 */
+  .ranking-table thead {
+    background: #efefef !important;
+  }
+  .ranking-table th {
+    color: #111 !important;
+    border-bottom: 1px solid #999 !important;
+  }
+  .ranking-table td {
+    color: #111 !important;
+    border-bottom: 1px solid #ddd !important;
+  }
+  .ranking-table tbody tr:hover {
+    background: transparent !important;
+  }
+  /* ranking-detail の太字白を黒に */
+  .ranking-table.ranking-detail-table td {
+    color: #111 !important;
+  }
+
+  /* PUC: グラデ + アウトライン廃止して solid な金茶色に。意味は伝わる程度で */
+  .ranking-table.ranking-detail-table td.score.score-puc {
+    background: none !important;
+    -webkit-background-clip: initial !important;
+    background-clip: initial !important;
+    -webkit-text-fill-color: initial !important;
+    color: #b07000 !important;
+    -webkit-text-stroke: 0 !important;
+    filter: none !important;
+    font-style: italic;
+    font-weight: bold;
+  }
+
+  /* effect バッジは色情報を残したいので背景を維持 (Safari は print-color-adjust 必要) */
+  span.effect {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color: #fff !important;
+  }
+
+  /* 情報行ラベル */
+  .info-row {
+    color: #222 !important;
+  }
+  .info-row .label {
+    color: #0050a0 !important;
+  }
+
+  /* インタラクションだけのものは PDF に出さない */
+  .form-actions,
+  .event-link-wrap,
+  .inner-tabs,
+  button {
+    display: none !important;
+  }
+
+  /* リンクは色だけ控えめに */
+  a, a:link, a:visited {
+    color: #0050a0 !important;
+    text-decoration: underline;
+  }
+}
