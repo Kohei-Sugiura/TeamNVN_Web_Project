@@ -4,11 +4,11 @@ namespace Weepa.Api.Validation;
 
 /// <summary>
 /// X (Twitter) ID を正規化する。
-///   @abc_player              -> abc_player
-///   ＠abc_player (全角@)     -> abc_player
-///   https://x.com/abc_player -> abc_player
-///   https://twitter.com/abc_player -> abc_player
-///   大文字 -> 小文字
+///   @Abc_Player              -> Abc_Player
+///   ＠Abc_Player (全角@)     -> Abc_Player
+///   https://x.com/Abc_Player -> Abc_Player
+///   https://twitter.com/Abc_Player -> Abc_Player
+/// 大文字小文字はユーザー入力のまま保持する。
 /// </summary>
 public static partial class XIdNormalizer
 {
@@ -28,7 +28,7 @@ public static partial class XIdNormalizer
             s = s.TrimStart('@');
         }
 
-        return s.ToLowerInvariant();
+        return s;
     }
 
     public static bool IsValid(string normalized) => ValidIdRegex().IsMatch(normalized);

@@ -866,7 +866,9 @@ public class AdminController : ControllerBase
 
     private IActionResult UnauthorizedWithChallenge()
     {
-        Response.Headers.WWWAuthenticate = "Basic realm=\"WeePA Admin\", charset=\"UTF-8\"";
+        // WWW-Authenticate: Basic を返すとブラウザがネイティブの認証ダイアログを
+        // 強制表示してしまう。/admin/login/ で独自ログイン UI を持っているので、
+        // 401 だけ返してフロント側 (admin-common.js) に redirect させる。
         return Unauthorized();
     }
 
