@@ -45,23 +45,92 @@ public sealed class DiscordCommandClient
     {
         if (!Enabled) return;
 
-        // /weepa-result <id?>: ランキング画面の PNG を Discord に投稿
-        // id 省略時は直近開催のイベント
-        var commands = new[]
+        // 全コマンド admin 限定 (default_member_permissions = "0" は
+        // 「全 permission 不要」= ロール持ちでないと UI に出ない、の意味)。
+        var commands = new object[]
         {
             new
             {
                 name = "weepa-result",
-                description = "WeePA イベントの集計結果ランキングを画像で投稿します",
+                description = "WeePA イベントの集計結果ランキングを画像で投稿",
                 type = 1, // CHAT_INPUT
+                default_member_permissions = "0",
                 options = new object[]
                 {
                     new
                     {
                         name = "id",
-                        description = "イベント ID (省略時は直近開催のイベント)",
+                        description = "weepa_event_id (省略時は直近開催)",
                         type = 4, // INTEGER
                         required = false,
+                    },
+                },
+            },
+            new
+            {
+                name = "weepa-publish",
+                description = "イベントを公開状態にする (tallied_at = NOW)",
+                type = 1,
+                default_member_permissions = "0",
+                options = new object[]
+                {
+                    new
+                    {
+                        name = "id",
+                        description = "weepa_event_id (省略時は直近の未公開イベント)",
+                        type = 4,
+                        required = false,
+                    },
+                },
+            },
+            new
+            {
+                name = "weepa-unpublish",
+                description = "イベントを非公開に戻す (tallied_at = NULL)",
+                type = 1,
+                default_member_permissions = "0",
+                options = new object[]
+                {
+                    new
+                    {
+                        name = "id",
+                        description = "weepa_event_id (必須)",
+                        type = 4,
+                        required = true,
+                    },
+                },
+            },
+            new
+            {
+                name = "weepa-songdetail",
+                description = "weepa_song_id から楽曲詳細を表示",
+                type = 1,
+                default_member_permissions = "0",
+                options = new object[]
+                {
+                    new
+                    {
+                        name = "id",
+                        description = "weepa_song_id",
+                        type = 4,
+                        required = true,
+                    },
+                },
+            },
+            new
+            {
+                name = "weepa-eventdetail",
+                description = "weepa_event_id からイベント詳細を表示",
+                type = 1,
+                default_member_permissions = "0",
+                options = new object[]
+                {
+                    new
+                    {
+                        name = "id",
+                        description = "weepa_event_id",
+                        type = 4,
+                        required = true,
                     },
                 },
             },

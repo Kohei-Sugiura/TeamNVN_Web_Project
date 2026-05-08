@@ -383,10 +383,13 @@ function renderPublishList(past) {
             <td>${escapeHtml(ymd(p.startDate))}~${escapeHtml(ymd(p.endDate))}</td>
             <td><a href="/admin/preview/?eventId=${encodeURIComponent(p.weepaEventId)}">プレビュー</a></td>
             <td class="status-cell">
-              <label class="toggle-switch" title="${published ? '公開中 → クリックで非公開' : '非公開 → クリックで公開'}">
-                <input type="checkbox" class="publish-toggle" data-event-id="${p.weepaEventId}"${published ? ' checked' : ''}>
+              <button type="button" class="toggle-switch publish-toggle"
+                      data-event-id="${p.weepaEventId}"
+                      data-published="${published}"
+                      aria-pressed="${published}"
+                      title="${published ? '公開中 → クリックで非公開' : '非公開 → クリックで公開'}">
                 <span class="toggle-slider" aria-hidden="true"></span>
-              </label>
+              </button>
               <span class="toggle-label">${stateLabel}</span>
             </td>
           </tr>
@@ -478,18 +481,16 @@ reorderSaveBtn.addEventListener('click', async () => {
     }
 });
 
-publishListEl.addEventListener('change', async (ev) => {
-    const t = ev.target;
-    if (!(t instanceof HTMLInputElement) || !t.classList.contains('publish-toggle')) return;
-    const id = t.dataset.eventId;
+publishListEl.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('.publish-toggle');
+    if (!btn) return;
+    const id = btn.dataset.eventId;
     if (!id) return;
-    const wantPublish = t.checked;
+    const isPublished = btn.dataset.published === 'true';
+    const wantPublish = !isPublished;
     const verb = wantPublish ? '公開' : '非公開化';
-    if (!confirm(`event_id=${id} を${verb}します。よろしいですか？`)) {
-        t.checked = !wantPublish; // revert UI
-        return;
-    }
-    t.disabled = true;
+    if (!confirm(`event_id=${id} を${verb}します。よろしいですか？`)) return;
+    btn.disabled = true;
     try {
         await adminFetch(`/api/admin/events/${id}/${wantPublish ? 'publish' : 'unpublish'}`, {
             method: 'POST',
@@ -499,10 +500,9 @@ publishListEl.addEventListener('change', async (ev) => {
         await loadSchedule();
     } catch (err) {
         if (err.message === 'AUTH_REDIRECT') return;
-        t.checked = !wantPublish; // revert UI on failure
         setInfo(err.message, 'ng');
     } finally {
-        t.disabled = false;
+        btn.disabled = false;
     }
 });
 

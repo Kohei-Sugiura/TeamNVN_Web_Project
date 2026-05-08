@@ -148,23 +148,60 @@ public class DiscordInteractionsController : ControllerBase
         var name = data.GetProperty("name").GetString() ?? "";
         var token = root.GetProperty("token").GetString() ?? "";
 
+        var idArg = TryGetIntOption(data, "id");
+
         if (name == "weepa-result")
         {
-            int? eventId = null;
-            if (data.TryGetProperty("options", out var opts))
-            {
-                foreach (var opt in opts.EnumerateArray())
-                {
-                    if (opt.GetProperty("name").GetString() == "id" &&
-                        opt.TryGetProperty("value", out var v) &&
-                        v.TryGetInt32(out var i))
-                    {
-                        eventId = i;
-                    }
-                }
-            }
             // 3 秒以内に応答が必要なので一旦 deferred を返してから裏で生成
-            _ = Task.Run(() => HandleWeepaResultAsync(token, eventId));
+            _ = Task.Run(() => HandleWeepaResultAsync(token, idArg));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "weepa-publish")
+        {
+            _ = Task.Run(() => HandleWeepaPublishAsync(token, idArg));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "weepa-unpublish")
+        {
+            if (!idArg.HasValue)
+            {
+                return Json(new
+                {
+                    type = RESP_CHANNEL_MESSAGE,
+                    data = new { content = "❌ id 引数が必要です", flags = FLAG_EPHEMERAL },
+                });
+            }
+            _ = Task.Run(() => HandleWeepaUnpublishAsync(token, idArg.Value));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "weepa-songdetail")
+        {
+            if (!idArg.HasValue)
+            {
+                return Json(new
+                {
+                    type = RESP_CHANNEL_MESSAGE,
+                    data = new { content = "❌ id 引数が必要です", flags = FLAG_EPHEMERAL },
+                });
+            }
+            _ = Task.Run(() => HandleSongDetailAsync(token, idArg.Value));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "weepa-eventdetail")
+        {
+            if (!idArg.HasValue)
+            {
+                return Json(new
+                {
+                    type = RESP_CHANNEL_MESSAGE,
+                    data = new { content = "❌ id 引数が必要です", flags = FLAG_EPHEMERAL },
+                });
+            }
+            _ = Task.Run(() => HandleEventDetailAsync(token, idArg.Value));
             return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
         }
 
@@ -173,6 +210,21 @@ public class DiscordInteractionsController : ControllerBase
             type = RESP_CHANNEL_MESSAGE,
             data = new { content = $"未対応のコマンド: /{name}", flags = FLAG_EPHEMERAL },
         });
+    }
+
+    private static int? TryGetIntOption(JsonElement data, string optionName)
+    {
+        if (!data.TryGetProperty("options", out var opts)) return null;
+        foreach (var opt in opts.EnumerateArray())
+        {
+            if (opt.GetProperty("name").GetString() == optionName &&
+                opt.TryGetProperty("value", out var v) &&
+                v.TryGetInt32(out var i))
+            {
+                return i;
+            }
+        }
+        return null;
     }
 
     private async Task HandleWeepaResultAsync(string token, int? eventId)
@@ -231,6 +283,220 @@ public class DiscordInteractionsController : ControllerBase
             await _cmd.FollowUpTextAsync(
                 token, $"❌ 画像生成中にエラーが発生しました: {ex.Message}",
                 ephemeral: true);
+        }
+    }
+
+    private async Task HandleWeepaPublishAsync(string token, int? eventId)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+
+            int targetId;
+            if (eventId.HasValue)
+            {
+                var exists = await conn.ExecuteScalarAsync<int?>(
+                    "SELECT weepa_event_id FROM weepa_events WHERE weepa_event_id = @Id",
+                    new { Id = eventId.Value });
+                if (exists is null)
+                {
+                    await _cmd.FollowUpTextAsync(
+                        token, $"❌ event_id {eventId.Value} は存在しません", ephemeral: true);
+                    return;
+                }
+                targetId = eventId.Value;
+            }
+            else
+            {
+                // 直近の未公開 (= 終了済 AND tallied_at IS NULL) を選出
+                var latest = await conn.QuerySingleOrDefaultAsync<int?>(
+                    """
+                    SELECT weepa_event_id FROM weepa_events
+                    WHERE end_date < NOW() AND tallied_at IS NULL
+                    ORDER BY end_date DESC
+                    LIMIT 1
+                    """);
+                if (latest is null)
+                {
+                    await _cmd.FollowUpTextAsync(
+                        token, "❌ 公開対象のイベント (終了済かつ未公開) がありません",
+                        ephemeral: true);
+                    return;
+                }
+                targetId = latest.Value;
+            }
+
+            using var resp = await _admin.PublishEventAsync(targetId, default);
+            if (resp.IsSuccessStatusCode)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token, $"✅ event #{targetId} を公開しました");
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                await _cmd.FollowUpTextAsync(
+                    token, $"❌ 公開失敗 ({(int)resp.StatusCode}): {body}",
+                    ephemeral: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "weepa-publish handler failed");
+            await _cmd.FollowUpTextAsync(
+                token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private async Task HandleWeepaUnpublishAsync(string token, int eventId)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+            var exists = await conn.ExecuteScalarAsync<int?>(
+                "SELECT weepa_event_id FROM weepa_events WHERE weepa_event_id = @Id",
+                new { Id = eventId });
+            if (exists is null)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token, $"❌ event_id {eventId} は存在しません", ephemeral: true);
+                return;
+            }
+
+            using var resp = await _admin.UnpublishEventAsync(eventId, default);
+            if (resp.IsSuccessStatusCode)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token, $"✅ event #{eventId} を非公開に戻しました");
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                await _cmd.FollowUpTextAsync(
+                    token, $"❌ 非公開化失敗 ({(int)resp.StatusCode}): {body}",
+                    ephemeral: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "weepa-unpublish handler failed");
+            await _cmd.FollowUpTextAsync(
+                token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private async Task HandleSongDetailAsync(string token, int songId)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+            var row = await conn.QuerySingleOrDefaultAsync<dynamic>(
+                """
+                SELECT weepa_song_id, song, effect, x_id, submit_name, submit_reason,
+                       submit_date, approval_status,
+                       (SELECT COUNT(*) FROM weepa_events e
+                        WHERE e.weepa_song_id = s.weepa_song_id) AS event_count
+                FROM weepa_songs s
+                WHERE weepa_song_id = @Id
+                """,
+                new { Id = songId });
+            if (row is null)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token, $"❌ weepa_song_id {songId} は存在しません",
+                    ephemeral: true);
+                return;
+            }
+            var status = ((short)row.approval_status) switch
+            {
+                -1 => "却下",
+                0 => "未承認",
+                1 => "承認済",
+                _ => "?"
+            };
+            var reason = string.IsNullOrWhiteSpace((string?)row.submit_reason)
+                ? "(なし)" : (string)row.submit_reason;
+            var submitDate = ((DateTime)row.submit_date).ToUniversalTime()
+                .AddHours(9).ToString("yyyy-MM-dd HH:mm");
+            var eventCount = (long)row.event_count;
+            var msg = $"""
+                🎵 **楽曲 #{songId}** {row.song}
+                譜面: `{row.effect}`
+                提案者: {row.submit_name} (@{row.x_id})
+                理由: {reason}
+                投稿: {submitDate} JST
+                ステータス: {status} ({row.approval_status}) / 紐付き event: {eventCount} 件
+                """;
+            await _cmd.FollowUpTextAsync(token, msg);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "weepa-songdetail handler failed");
+            await _cmd.FollowUpTextAsync(
+                token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private async Task HandleEventDetailAsync(string token, int eventId)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+            var row = await conn.QuerySingleOrDefaultAsync<dynamic>(
+                """
+                SELECT e.weepa_event_id, e.weepa_song_id, e.start_date, e.end_date,
+                       e.tallied_at, s.song, s.effect, s.submit_name,
+                       (SELECT COUNT(*) FROM weepa_scores sc
+                        WHERE sc.weepa_event_id = e.weepa_event_id) AS scores_total,
+                       (SELECT COUNT(*) FROM weepa_scores sc
+                        WHERE sc.weepa_event_id = e.weepa_event_id AND sc.approval_status = 1) AS scores_approved,
+                       (SELECT COUNT(*) FROM weepa_scores sc
+                        WHERE sc.weepa_event_id = e.weepa_event_id AND sc.approval_status = 0) AS scores_pending
+                FROM weepa_events e
+                JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
+                WHERE e.weepa_event_id = @Id
+                """,
+                new { Id = eventId });
+            if (row is null)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token, $"❌ weepa_event_id {eventId} は存在しません",
+                    ephemeral: true);
+                return;
+            }
+
+            var nowUtc = DateTime.UtcNow;
+            var startUtc = ((DateTime)row.start_date).ToUniversalTime();
+            var endUtc = ((DateTime)row.end_date).ToUniversalTime();
+            var talliedAtNullable = (DateTime?)row.tallied_at;
+            string state;
+            if (nowUtc < startUtc) state = "🕒 開催前";
+            else if (nowUtc < endUtc) state = "🟢 開催中";
+            else if (talliedAtNullable is null) state = "⏳ 集計中 (未公開)";
+            else state = "✅ 公開済";
+
+            var startJst = startUtc.AddHours(9).ToString("yyyy-MM-dd HH:mm");
+            var endJst = endUtc.AddHours(9).ToString("yyyy-MM-dd HH:mm");
+            var talliedJst = talliedAtNullable.HasValue
+                ? talliedAtNullable.Value.ToUniversalTime().AddHours(9).ToString("yyyy-MM-dd HH:mm") + " JST"
+                : "(未集計)";
+
+            var msg = $"""
+                📅 **イベント #{eventId}**
+                楽曲: {row.song} (`{row.effect}`) — song #{row.weepa_song_id}
+                提案者: {row.submit_name}
+                開催期間: {startJst} ~ {endJst} JST
+                状態: {state}
+                集計: {talliedJst}
+                スコア: {row.scores_approved} 承認済 / {row.scores_pending} 未承認 / 計 {row.scores_total} 件
+                """;
+            await _cmd.FollowUpTextAsync(token, msg);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "weepa-eventdetail handler failed");
+            await _cmd.FollowUpTextAsync(
+                token, $"❌ エラー: {ex.Message}", ephemeral: true);
         }
     }
 

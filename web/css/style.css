@@ -1103,23 +1103,21 @@ dialog.confirm-dialog .dialog-actions button.cancel:hover {
   letter-spacing: 0.06em;
 }
 
-.toggle-switch {
+/* button ベースのトグル (元の <input type="checkbox"> + <label> パターンは
+   モバイル touch で挙動が不安定だったため <button data-published="..."> に
+   置き換えた)。 */
+button.toggle-switch {
   position: relative;
   display: inline-block;
   width: 46px;
   height: 24px;
   vertical-align: middle;
-}
-
-.toggle-switch input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
   cursor: pointer;
-  z-index: 2;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .toggle-slider {
@@ -1128,7 +1126,6 @@ dialog.confirm-dialog .dialog-actions button.cancel:hover {
   background: rgba(80, 80, 112, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 999px;
-  cursor: pointer;
   pointer-events: none;
   transition: background 0.18s ease, box-shadow 0.18s ease;
 }
@@ -1146,17 +1143,17 @@ dialog.confirm-dialog .dialog-actions button.cancel:hover {
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
 }
 
-.toggle-switch input:checked + .toggle-slider {
+button.toggle-switch[data-published="true"] .toggle-slider {
   background: linear-gradient(135deg, #00e5ff 0%, #00a8d8 100%);
   box-shadow: 0 0 8px rgba(0, 229, 255, 0.4);
 }
 
-.toggle-switch input:checked + .toggle-slider::before {
+button.toggle-switch[data-published="true"] .toggle-slider::before {
   transform: translateX(22px);
   background: #fff;
 }
 
-.toggle-switch input:disabled + .toggle-slider {
+button.toggle-switch:disabled .toggle-slider {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -1539,7 +1536,7 @@ dialog.confirm-dialog .dialog-actions button.cancel:hover {
   }
 
   /* 公開設定のトグルスイッチは少し大きくしてタップしやすく */
-  .toggle-switch {
+  button.toggle-switch {
     width: 52px;
     height: 28px;
   }
@@ -1547,7 +1544,7 @@ dialog.confirm-dialog .dialog-actions button.cancel:hover {
     width: 22px;
     height: 22px;
   }
-  .toggle-switch input:checked + .toggle-slider::before {
+  button.toggle-switch[data-published="true"] .toggle-slider::before {
     transform: translateX(24px);
   }
 

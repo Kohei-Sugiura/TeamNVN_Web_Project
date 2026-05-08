@@ -59,4 +59,10 @@ public sealed class WeepaAdminClient
         _http.PostAsync(
             $"/api/admin/scores/{eventId}/{Uri.EscapeDataString(xId)}/{submitId}/reject",
             null, ct);
+
+    public Task<HttpResponseMessage> PublishEventAsync(int id, CancellationToken ct) =>
+        _http.PostAsync($"/api/admin/events/{id}/publish", null, ct);
+
+    public Task<HttpResponseMessage> UnpublishEventAsync(int id, CancellationToken ct) =>
+        _http.PostAsync($"/api/admin/events/{id}/unpublish", null, ct);
 }
