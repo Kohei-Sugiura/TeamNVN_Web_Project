@@ -157,25 +157,34 @@ async function loadMscEvents() {
     }
 }
 
+function mscEventStateBadge(ev) {
+    const now = Date.now();
+    const start = new Date(ev.startDate).getTime();
+    const end = new Date(ev.endDate).getTime();
+    if (now < start) return `<span class="status-tallying">開催前</span>`;
+    if (now < end) return `<span class="status-active">開催中</span>`;
+    if (ev.talliedAt) return `<span class="status-active">公開済</span>`;
+    return `<span class="status-tallying">集計中 (未公開)</span>`;
+}
+
 function renderMscEventsList(events) {
     if (!events.length) {
         mscEventsListEl.innerHTML = '<p class="empty">MSC イベントはまだありません。</p>';
         return;
     }
+    // 開始日 ASC (近いもの順)
+    events = [...events].sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
     const rows = events.map((e) => {
         const songLines = (e.songs ?? [])
             .map((s) => `${s.songOrder}. ${escapeHtml(s.song)} (${escapeHtml(s.effect)})`)
             .join('<br>');
-        const published = e.talliedAt
-            ? `<span class="status-active">公開中</span>`
-            : `<span class="status-tallying">非公開</span>`;
         return `
           <tr>
             <td>${e.mscEventId}</td>
             <td>${escapeHtml(e.title)}</td>
             <td>${escapeHtml(mscYmdHm(e.startDate))} ~ ${escapeHtml(mscYmdHm(e.endDate))}</td>
             <td>${songLines || '(曲未設定)'}</td>
-            <td>${published}</td>
+            <td>${mscEventStateBadge(e)}</td>
           </tr>
         `;
     }).join('');

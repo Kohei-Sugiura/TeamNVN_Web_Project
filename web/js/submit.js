@@ -8,6 +8,24 @@ const confirmCancelBtn = document.getElementById('confirm-cancel');
 
 const fieldKeys = ['song', 'effect', 'xId', 'submitName', 'submitReason'];
 
+// X ID + 投稿者名をブラウザに永続化 (localStorage)。
+// 同一ブラウザ内で再訪・別フォームに遷移しても自動入力される。
+const USER_PROFILE_KEY = 'weepa_user_profile';
+function loadUserProfile() {
+  try { return JSON.parse(localStorage.getItem(USER_PROFILE_KEY) || 'null') || {}; }
+  catch { return {}; }
+}
+function saveUserProfile(profile) {
+  try { localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile)); }
+  catch { /* quota / private mode 等は無視 */ }
+}
+function prefillUserFields() {
+  const p = loadUserProfile();
+  if (p.xId && !form.xId.value) form.xId.value = p.xId;
+  if (p.submitName && !form.submitName.value) form.submitName.value = p.submitName;
+}
+prefillUserFields();
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -89,7 +107,9 @@ async function actuallySubmit(payload) {
       await res.json().catch(() => null);
       resultEl.textContent = '✓ 投稿を受け付けました。ありがとうございます。';
       resultEl.className = 'result ok';
+      saveUserProfile({ xId: payload.xId, submitName: payload.submitName });
       form.reset();
+      prefillUserFields();
     } else if (res.status === 400) {
       const data = await res.json().catch(() => ({}));
       mapServerErrors(data.errors);

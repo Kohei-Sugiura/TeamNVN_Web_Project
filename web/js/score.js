@@ -9,6 +9,23 @@ const confirmCancelBtn = document.getElementById('confirm-cancel');
 
 const fieldKeys = ['xId', 'submitName', 'score', 'exScore', 'image'];
 
+// X ID + 投稿者名をブラウザに永続化 (localStorage)。submit.js と共通キー。
+const USER_PROFILE_KEY = 'weepa_user_profile';
+function loadUserProfile() {
+  try { return JSON.parse(localStorage.getItem(USER_PROFILE_KEY) || 'null') || {}; }
+  catch { return {}; }
+}
+function saveUserProfile(profile) {
+  try { localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile)); }
+  catch { /* quota / private mode 等は無視 */ }
+}
+function prefillUserFields() {
+  const p = loadUserProfile();
+  if (p.xId && !form.xId.value) form.xId.value = p.xId;
+  if (p.submitName && !form.submitName.value) form.submitName.value = p.submitName;
+}
+prefillUserFields();
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -191,7 +208,9 @@ async function actuallySubmit(snap) {
     if (res.ok) {
       resultEl.textContent = '✓ 投稿を受け付けました。ありがとうございます。';
       resultEl.className = 'result ok';
+      saveUserProfile({ xId: snap.xId, submitName: snap.submitName });
       form.reset();
+      prefillUserFields();
     } else if (res.status === 400) {
       const data = await res.json().catch(() => ({}));
       mapServerErrors(data.errors);
