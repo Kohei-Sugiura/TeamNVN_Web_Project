@@ -90,9 +90,10 @@
         <!-- ============== 公開設定 ============== -->
         <section class="event-card msc-tab-panel" data-tab="publish" hidden>
             <h2>結果公開の切り替え</h2>
-            <p class="hint">終了済みイベントの結果を公開 / 非公開にします。仕様は WeePA と基本同じ予定 (UI 仕様確定後に実装)。</p>
+            <p class="hint">終了済みイベントの結果ランキングを公開 / 非公開にします。公開すると <a href="/msc/ranking/">/msc/ranking/</a> から参照可能になります。</p>
+            <p id="msc-publish-result" class="result" role="status" aria-live="polite"></p>
             <div id="msc-publish-list">
-                <p class="hint">(API 実装後に表示されます)</p>
+                <p class="loading">読み込み中...</p>
             </div>
         </section>
     </main>

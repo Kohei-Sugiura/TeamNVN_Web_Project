@@ -360,6 +360,57 @@ public class MscAdminController : ControllerBase
         return Ok(new { message = "ok" });
     }
 
+    // ============================================
+    // 公開 / 非公開トグル (WeePA と同じく tallied_at で表現)
+    // ============================================
+
+    [HttpPost("events/{id:int}/publish")]
+    public async Task<IActionResult> PublishEvent(int id, CancellationToken ct)
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        var pendingCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM msc_submissions WHERE msc_event_id = @Id AND approval_status = 0",
+            new { Id = id },
+            cancellationToken: ct));
+        if (pendingCount > 0)
+        {
+            return BadRequest(new
+            {
+                message = $"未処理（承認も却下もされていない）スコアが {pendingCount} 件あります。先にスコア承認タブで処理してください。",
+                pendingCount,
+            });
+        }
+
+        var affected = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE msc_events SET tallied_at = NOW() WHERE msc_event_id = @Id AND tallied_at IS NULL",
+            new { Id = id },
+            cancellationToken: ct));
+        if (affected == 0)
+        {
+            return NotFound(new { message = "未公開のイベントが見つかりません（既に公開済み or 存在しない）" });
+        }
+        return Ok(new { message = "ok" });
+    }
+
+    [HttpPost("events/{id:int}/unpublish")]
+    public async Task<IActionResult> UnpublishEvent(int id, CancellationToken ct)
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var affected = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE msc_events SET tallied_at = NULL WHERE msc_event_id = @Id",
+            new { Id = id },
+            cancellationToken: ct));
+        if (affected == 0) return NotFound(new { message = "対象イベントが見つかりません" });
+        return Ok(new { message = "ok" });
+    }
+
     [HttpPost("submissions/{eventId:int}/{xId}/{submitId:int}/reject")]
     public async Task<IActionResult> RejectSubmission(
         int eventId, string xId, int submitId, CancellationToken ct)

@@ -15,6 +15,8 @@ const mscPanels = document.querySelectorAll('.msc-tab-panel');
 const mscPendingScoresEl = document.getElementById('msc-pending-scores');
 const mscPendingReloadBtn = document.getElementById('msc-pending-reload-btn');
 const mscScoresResultEl = document.getElementById('msc-scores-result');
+const mscPublishListEl = document.getElementById('msc-publish-list');
+const mscPublishResultEl = document.getElementById('msc-publish-result');
 
 function mscSetResult(text, kind) {
     if (!mscCreateResult) return;
@@ -354,6 +356,103 @@ if (mscPendingScoresEl) {
 }
 
 // ============================================
+// 公開設定サブタブ
+// ============================================
+
+function setPublishResult(text, kind) {
+    if (!mscPublishResultEl) return;
+    mscPublishResultEl.textContent = text;
+    mscPublishResultEl.className = `result ${kind}`;
+}
+
+async function loadPublishList() {
+    if (!mscPublishListEl) return;
+    mscPublishListEl.innerHTML = '<p class="loading">読み込み中...</p>';
+    setPublishResult('', '');
+    try {
+        const events = await adminFetch('/api/admin/msc/events');
+        const past = (events ?? []).filter((e) => new Date(e.endDate).getTime() <= Date.now());
+        renderPublishList(past);
+    } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
+        mscPublishListEl.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    }
+}
+
+function renderPublishList(events) {
+    if (!events.length) {
+        mscPublishListEl.innerHTML = '<p class="empty">終了済みの MSC イベントはまだありません。</p>';
+        return;
+    }
+    // 終了日が新しい順
+    events = [...events].sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
+    const rows = events.map((e) => {
+        const published = !!e.talliedAt;
+        const stateLabel = published
+            ? '<span class="status-active">公開中</span>'
+            : '<span class="status-tallying">非公開</span>';
+        const songs = (e.songs ?? [])
+            .map((s) => `${s.songOrder}. ${escapeHtml(s.song)} (${escapeHtml(s.effect)})`)
+            .join('<br>');
+        return `
+          <tr>
+            <td>${e.mscEventId}</td>
+            <td>${escapeHtml(e.title)}</td>
+            <td>${escapeHtml(mscYmdHm(e.startDate))} ~ ${escapeHtml(mscYmdHm(e.endDate))}</td>
+            <td>${songs || '(曲未設定)'}</td>
+            <td><a href="/admin/msc/preview/?eventId=${e.mscEventId}">プレビュー</a>${published ? ` / <a href="/msc/ranking/?eventId=${e.mscEventId}" target="_blank" rel="noopener">公開ページ</a>` : ''}</td>
+            <td class="status-cell">
+              <button type="button" class="toggle-switch publish-toggle"
+                      data-event-id="${e.mscEventId}"
+                      data-published="${published}"
+                      aria-pressed="${published}"
+                      title="${published ? '公開中 → クリックで非公開' : '非公開 → クリックで公開'}">
+                <span class="toggle-slider" aria-hidden="true"></span>
+              </button>
+              <span class="toggle-label">${stateLabel}</span>
+            </td>
+          </tr>
+        `;
+    }).join('');
+    mscPublishListEl.innerHTML = `
+      <div class="db-table-wrap">
+        <table class="ranking-table">
+          <thead>
+            <tr><th>id</th><th>タイトル</th><th>開催期間</th><th>課題曲</th><th>確認</th><th class="status-cell">公開</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+}
+
+if (mscPublishListEl) {
+    mscPublishListEl.addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('.publish-toggle');
+        if (!btn) return;
+        const id = btn.dataset.eventId;
+        if (!id) return;
+        const isPublished = btn.dataset.published === 'true';
+        const wantPublish = !isPublished;
+        const verb = wantPublish ? '公開' : '非公開化';
+        if (!(await adminConfirm(`msc_event_id=${id} を${verb}します。よろしいですか？`))) return;
+        btn.disabled = true;
+        try {
+            await adminFetch(`/api/admin/msc/events/${id}/${wantPublish ? 'publish' : 'unpublish'}`, {
+                method: 'POST',
+                body: '{}',
+            });
+            setPublishResult(`msc_event_id=${id} を${verb}しました。`, 'ok');
+            await loadPublishList();
+        } catch (err) {
+            if (err.message === 'AUTH_REDIRECT') return;
+            setPublishResult(err.message, 'ng');
+            btn.disabled = false;
+        }
+    });
+}
+
+// ============================================
 // タブ切替
 // ============================================
 function selectMscTab(tab) {
@@ -369,6 +468,9 @@ function selectMscTab(tab) {
     }
     if (tab === 'scores') {
         loadPendingSubmissions();
+    }
+    if (tab === 'publish') {
+        loadPublishList();
     }
     if (history.replaceState) {
         const url = new URL(window.location.href);

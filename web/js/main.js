@@ -127,3 +127,95 @@ function adjustingCard() {
     cardsEl.innerHTML = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
   }
 })();
+
+// ============================================
+// MoonShotChallenge (MSC) セクション
+// ============================================
+const mscCardsEl = document.getElementById('msc-cards');
+
+function mscSongsHtml(songs) {
+  if (!songs || !songs.length) return '';
+  const lines = [...songs]
+    .sort((a, b) => a.songOrder - b.songOrder)
+    .map((s) => `${s.songOrder}. ${escapeHtml(s.song)} <span class="effect effect-${(s.effect || '').toLowerCase()}">${escapeHtml(s.effect)}</span>`)
+    .join('<br>');
+  return `<p class="info-row"><span class="label">課題曲</span>${lines}</p>`;
+}
+
+function mscActiveCard(ev) {
+  const url = `/msc/score/?eventId=${encodeURIComponent(ev.mscEventId)}`;
+  return `
+    <section class="weepa-status-card">
+      <h3 class="weepa-status-title">現在開催中</h3>
+      <div class="weepa-status-body">
+        <h2 class="msc-event-title">${escapeHtml(ev.title)}</h2>
+        <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
+        ${mscSongsHtml(ev.songs)}
+        ${ev.description ? `<p class="info-row"><span class="label">説明</span>${escapeHtml(ev.description)}</p>` : ''}
+        <p class="event-link-wrap"><a class="event-link" href="${url}">スコアを投稿する</a></p>
+      </div>
+    </section>
+  `;
+}
+
+function mscRecentEntry(ev) {
+  const tallied = isTallied(ev);
+  const action = tallied
+    ? `<a class="event-link" href="/msc/ranking/?eventId=${encodeURIComponent(ev.mscEventId)}">ランキング詳細を見る</a>`
+    : `<span class="weepa-pending">集計が完了するまでお待ちください</span>`;
+  return `
+    <div class="recent-event">
+      <h2 class="msc-event-title">${escapeHtml(ev.title)}</h2>
+      <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
+      ${mscSongsHtml(ev.songs)}
+      <p class="event-link-wrap">${action}</p>
+    </div>
+  `;
+}
+
+function mscRecentCard(events) {
+  if (!events.length) return '';
+  return `
+    <section class="weepa-status-card">
+      <h3 class="weepa-status-title">直近の開催</h3>
+      <div class="weepa-status-body recent-events">
+        ${events.map((ev) => mscRecentEntry(ev)).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function mscAdjustingCard() {
+  return `
+    <section class="weepa-status-card">
+      <h3 class="weepa-status-title">調整中</h3>
+      <div class="weepa-status-body">
+        <p>次回の開催準備中です。</p>
+      </div>
+    </section>
+  `;
+}
+
+(async () => {
+  if (!mscCardsEl) return;
+  try {
+    const res = await fetch('/api/msc/events/recent?limit=20');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const events = await res.json();
+    const now = new Date();
+
+    const active = events.find((ev) => isActive(ev, now));
+    const recent = events
+      .filter((ev) => isPast(ev, now))
+      .sort((a, b) => new Date(b.endDate) - new Date(a.endDate))
+      .slice(0, 3);
+
+    const cards = [];
+    cards.push(active ? mscActiveCard(active) : mscAdjustingCard());
+    if (recent.length) cards.push(mscRecentCard(recent));
+
+    mscCardsEl.innerHTML = cards.join('');
+  } catch (err) {
+    mscCardsEl.innerHTML = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
+  }
+})();

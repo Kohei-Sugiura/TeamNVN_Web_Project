@@ -105,6 +105,216 @@ public class MscController : ControllerBase
         return Ok(new { @event = ev });
     }
 
+    [HttpGet("events/recent")]
+    public async Task<IActionResult> Recent(
+        [FromQuery] int limit = 20,
+        CancellationToken ct = default)
+    {
+        if (limit < 1) limit = 1;
+        if (limit > 200) limit = 200;
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var events = (await conn.QueryAsync<MscEventResponse>(new CommandDefinition(
+            """
+            SELECT msc_event_id AS "MscEventId",
+                   title        AS "Title",
+                   description  AS "Description",
+                   start_date   AS "StartDate",
+                   end_date     AS "EndDate",
+                   tallied_at   AS "TalliedAt",
+                   created_at   AS "CreatedAt"
+            FROM msc_events
+            ORDER BY start_date DESC
+            LIMIT @Limit
+            """,
+            new { Limit = limit }, cancellationToken: ct))).ToList();
+        if (events.Count == 0) return Ok(events);
+
+        var ids = events.Select(e => e.MscEventId).ToArray();
+        var songsAll = (await conn.QueryAsync<(int MscEventId, int SongOrder, string Song, string Effect)>(new CommandDefinition(
+            """
+            SELECT msc_event_id AS "MscEventId",
+                   song_order   AS "SongOrder",
+                   song         AS "Song",
+                   effect       AS "Effect"
+            FROM msc_songs
+            WHERE msc_event_id = ANY(@Ids)
+            ORDER BY msc_event_id, song_order
+            """,
+            new { Ids = ids }, cancellationToken: ct))).ToList();
+        var songsByEvent = songsAll
+            .GroupBy(s => s.MscEventId)
+            .ToDictionary(g => g.Key, g => g.Select(s => new MscSongResponse
+            {
+                SongOrder = s.SongOrder, Song = s.Song, Effect = s.Effect,
+            }).ToList());
+        foreach (var ev in events)
+        {
+            if (songsByEvent.TryGetValue(ev.MscEventId, out var list)) ev.Songs = list;
+        }
+        return Ok(events);
+    }
+
+    [HttpGet("events/past")]
+    public async Task<IActionResult> Past(CancellationToken ct)
+    {
+        // 公開済 (tallied_at IS NOT NULL) のイベントのみ返す
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var events = (await conn.QueryAsync<MscEventResponse>(new CommandDefinition(
+            """
+            SELECT msc_event_id AS "MscEventId",
+                   title        AS "Title",
+                   description  AS "Description",
+                   start_date   AS "StartDate",
+                   end_date     AS "EndDate",
+                   tallied_at   AS "TalliedAt",
+                   created_at   AS "CreatedAt"
+            FROM msc_events
+            WHERE tallied_at IS NOT NULL
+            ORDER BY end_date DESC
+            """,
+            cancellationToken: ct))).ToList();
+        if (events.Count == 0) return Ok(events);
+
+        var ids = events.Select(e => e.MscEventId).ToArray();
+        var songsAll = (await conn.QueryAsync<(int MscEventId, int SongOrder, string Song, string Effect)>(new CommandDefinition(
+            """
+            SELECT msc_event_id AS "MscEventId",
+                   song_order   AS "SongOrder",
+                   song         AS "Song",
+                   effect       AS "Effect"
+            FROM msc_songs
+            WHERE msc_event_id = ANY(@Ids)
+            ORDER BY msc_event_id, song_order
+            """,
+            new { Ids = ids }, cancellationToken: ct))).ToList();
+        var songsByEvent = songsAll
+            .GroupBy(s => s.MscEventId)
+            .ToDictionary(g => g.Key, g => g.Select(s => new MscSongResponse
+            {
+                SongOrder = s.SongOrder, Song = s.Song, Effect = s.Effect,
+            }).ToList());
+        foreach (var ev in events)
+        {
+            if (songsByEvent.TryGetValue(ev.MscEventId, out var list)) ev.Songs = list;
+        }
+        return Ok(events);
+    }
+
+    [HttpGet("events/{id:int}/ranking")]
+    public async Task<IActionResult> Ranking(int id, CancellationToken ct)
+    {
+        // WeePA の /api/events/{id}/ranking と同様、公開チェックは公開ページの
+        // 導線 (events/past) 側でのみ行い、API はランキングデータを純粋に返す。
+        // これにより /admin/msc/preview/ から未公開でも管理者がプレビューできる。
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        var exists = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
+            "SELECT 1 FROM msc_events WHERE msc_event_id = @Id",
+            new { Id = id }, cancellationToken: ct));
+        if (exists is null)
+        {
+            return NotFound(new { message = "イベントが見つかりません" });
+        }
+
+        // 各 submission の合計 (各 song_order の MAX score を合算) を出し、
+        // 各 x_id の最高 submission を採用、最後に活動情報 (最終投稿日 / 投稿数) を join。
+        const string rankingSql = """
+            WITH per_song_best AS (
+                SELECT msc_event_id, x_id, submit_id, song_order, MAX(score) AS best_score
+                FROM msc_scores
+                WHERE msc_event_id = @EventId
+                GROUP BY msc_event_id, x_id, submit_id, song_order
+            ),
+            per_submission AS (
+                SELECT s.x_id, s.submit_id, s.submit_name, s.submit_date,
+                       SUM(ps.best_score)::int AS total_score
+                FROM msc_submissions s
+                JOIN per_song_best ps
+                  ON  ps.msc_event_id = s.msc_event_id
+                  AND ps.x_id         = s.x_id
+                  AND ps.submit_id    = s.submit_id
+                WHERE s.msc_event_id = @EventId AND s.approval_status = 1
+                GROUP BY s.x_id, s.submit_id, s.submit_name, s.submit_date
+            ),
+            best_per_user AS (
+                SELECT DISTINCT ON (x_id)
+                    x_id, submit_id, submit_name, submit_date, total_score
+                FROM per_submission
+                ORDER BY x_id, total_score DESC, submit_date ASC
+            ),
+            activity AS (
+                SELECT x_id,
+                       MAX(submit_date) AS last_submit_date,
+                       COUNT(*)::int    AS submission_count
+                FROM msc_submissions
+                WHERE msc_event_id = @EventId AND approval_status = 1
+                GROUP BY x_id
+            )
+            SELECT
+                ROW_NUMBER() OVER (ORDER BY b.total_score DESC, b.submit_date ASC) AS "Rank",
+                b.x_id              AS "XId",
+                b.submit_name       AS "SubmitName",
+                b.submit_id         AS "SubmitId",
+                b.total_score       AS "TotalScore",
+                b.submit_date       AS "SubmitDate",
+                a.last_submit_date  AS "LastSubmitDate",
+                a.submission_count  AS "SubmissionCount"
+            FROM best_per_user b
+            JOIN activity a ON a.x_id = b.x_id
+            ORDER BY "Rank"
+            """;
+
+        var entries = (await conn.QueryAsync<(int Rank, string XId, string SubmitName, int SubmitId, int TotalScore, DateTimeOffset SubmitDate, DateTimeOffset LastSubmitDate, int SubmissionCount)>(
+            new CommandDefinition(rankingSql, new { EventId = id }, cancellationToken: ct))).ToList();
+
+        if (entries.Count == 0) return Ok(new List<MscRankingEntry>());
+
+        // 各ユーザーのベスト提出に紐付く per-song best を 1 クエリで取得
+        var bestKeys = entries.Select(e => new { e.XId, e.SubmitId }).ToList();
+        var xIds = bestKeys.Select(k => k.XId).ToArray();
+        var submitIds = bestKeys.Select(k => k.SubmitId).ToArray();
+        var perSong = (await conn.QueryAsync<(string XId, int SubmitId, int SongOrder, int BestScore)>(new CommandDefinition(
+            """
+            SELECT sub.x_id        AS "XId",
+                   sub.submit_id   AS "SubmitId",
+                   ps.song_order   AS "SongOrder",
+                   ps.best_score   AS "BestScore"
+            FROM (
+                SELECT msc_event_id, x_id, submit_id, song_order, MAX(score) AS best_score
+                FROM msc_scores
+                WHERE msc_event_id = @EventId
+                GROUP BY msc_event_id, x_id, submit_id, song_order
+            ) ps
+            JOIN unnest(@XIds, @SubmitIds) AS sub(x_id, submit_id)
+              ON sub.x_id = ps.x_id AND sub.submit_id = ps.submit_id
+            WHERE ps.msc_event_id = @EventId
+            ORDER BY ps.song_order
+            """,
+            new { EventId = id, XIds = xIds, SubmitIds = submitIds },
+            cancellationToken: ct))).ToList();
+
+        var perSongByKey = perSong
+            .GroupBy(p => (p.XId, p.SubmitId))
+            .ToDictionary(g => g.Key, g => g.Select(p => new MscRankingPerSong
+            {
+                SongOrder = p.SongOrder, Score = p.BestScore,
+            }).OrderBy(p => p.SongOrder).ToList());
+
+        var results = entries.Select(e => new MscRankingEntry
+        {
+            Rank = e.Rank,
+            SubmitName = e.SubmitName,
+            TotalScore = e.TotalScore,
+            SubmitDate = e.SubmitDate,
+            LastSubmitDate = e.LastSubmitDate,
+            SubmissionCount = e.SubmissionCount,
+            PerSong = perSongByKey.TryGetValue((e.XId, e.SubmitId), out var list) ? list : new(),
+        }).ToList();
+
+        return Ok(results);
+    }
+
     [HttpPost("events/{eventId:int}/submissions")]
     [RequestSizeLimit(MaxTotalBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxTotalBytes)]
