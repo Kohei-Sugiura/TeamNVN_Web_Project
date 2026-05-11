@@ -8,7 +8,7 @@ public sealed class SongApproveRequest
     public string? Song { get; set; }
 
     [RegularExpression(
-        @"^(NOV|ADV|EXH|MXM|INF|GRV|HVN|VVD|XCD|ULT)$",
-        ErrorMessage = "譜面種は NOV/ADV/EXH/MXM/INF/GRV/HVN/VVD/XCD/ULT のいずれかです")]
+        @"^(NOV|ADV|EXH|MXM|INF|GRV|HVN|VVD|XCD|NBL|ULT)$",
+        ErrorMessage = "譜面種は NOV/ADV/EXH/MXM/INF/GRV/HVN/VVD/XCD/NBL/ULT のいずれかです")]
     public string? Effect { get; set; }
 }

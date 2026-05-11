@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ムンチャレ 管理 - Team NVN</title>
+    <link rel="icon" type="image/png" href="/image/TeamNVN_icon.png">
+    <link rel="apple-touch-icon" href="/image/TeamNVN_icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Noto+Sans+JP:wght@400;700&display=swap">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <main class="container">
+        <header class="site-header">
+            <h1><a href="/"><img class="site-header-logo" src="/image/TeamNVN_icon.png" alt=""><span class="site-header-name">Team NVN</span></a></h1>
+            <p class="subtitle">SOUND VOLTEX 交流チーム</p>
+        </header>
+        <div id="admin-nav"></div>
+        <h1>ムンチャレ 管理</h1>
+
+        <nav class="inner-tabs" id="msc-tabs">
+            <button type="button" data-tab="events" class="active">イベント設定</button>
+            <button type="button" data-tab="scores">スコア承認</button>
+            <button type="button" data-tab="publish">公開設定</button>
+        </nav>
+
+        <p id="msc-result" class="result" role="status" aria-live="polite"></p>
+
+        <!-- ============== イベント設定 ============== -->
+        <section class="event-card msc-tab-panel" data-tab="events">
+            <h2>新規 MSC イベント作成</h2>
+            <p class="hint">タイトル / 開催期間 / 課題曲 (2〜4 曲) を設定して作成します。曲は上から順に必修。</p>
+
+            <form id="msc-event-create-form" class="form" novalidate>
+                <div class="field">
+                    <label for="msc-title">タイトル <span class="required">*</span></label>
+                    <input type="text" id="msc-title" name="title" required maxlength="200" placeholder="例: MSC vol.1 春の陣">
+                </div>
+
+                <div class="field">
+                    <label for="msc-description">説明 (任意)</label>
+                    <textarea id="msc-description" name="description" rows="3" maxlength="1000"></textarea>
+                </div>
+
+                <div class="admin-edit-fields">
+                    <label>開催開始 <span class="required">*</span>
+                        <input type="datetime-local" id="msc-start-date" name="startDate" required>
+                    </label>
+                    <label>開催終了 <span class="required">*</span>
+                        <input type="datetime-local" id="msc-end-date" name="endDate" required>
+                    </label>
+                </div>
+
+                <h3 style="margin-top:20px;">課題曲 (2〜4 曲、上から必修順)</h3>
+                <div id="msc-songs-list" class="msc-songs-list"></div>
+                <div class="form-actions">
+                    <button type="button" id="msc-add-song-btn">+ 曲を追加</button>
+                </div>
+
+                <p id="msc-create-result" class="result" role="status" aria-live="polite"></p>
+
+                <div class="form-actions">
+                    <button type="submit">作成</button>
+                </div>
+            </form>
+
+            <h2 style="margin-top:24px;">既存 MSC イベント</h2>
+            <div id="msc-events-list">
+                <p class="loading">読み込み中...</p>
+            </div>
+        </section>
+
+        <!-- ============== スコア承認 ============== -->
+        <section class="event-card msc-tab-panel" data-tab="scores" hidden>
+            <h2>スコア承認待ち</h2>
+            <p class="hint">WeePA と同じく未承認スコアを承認 / 却下します。仕様は WeePA と基本同じ予定 (UI 仕様確定後に実装)。</p>
+            <div id="msc-pending-scores" class="admin-list">
+                <p class="hint">(API 実装後に表示されます)</p>
+            </div>
+        </section>
+
+        <!-- ============== 公開設定 ============== -->
+        <section class="event-card msc-tab-panel" data-tab="publish" hidden>
+            <h2>結果公開の切り替え</h2>
+            <p class="hint">終了済みイベントの結果を公開 / 非公開にします。仕様は WeePA と基本同じ予定 (UI 仕様確定後に実装)。</p>
+            <div id="msc-publish-list">
+                <p class="hint">(API 実装後に表示されます)</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/js/admin-common.js"></script>
+    <script src="/js/admin-msc.js"></script>
+</body>
+
+</html>

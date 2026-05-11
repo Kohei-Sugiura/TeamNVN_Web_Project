@@ -14,7 +14,7 @@ function formatDate(iso) {
     });
 }
 
-const EFFECT_OPTIONS = ['NOV', 'ADV', 'EXH', 'MXM', 'INF', 'GRV', 'HVN', 'VVD', 'XCD', 'ULT'];
+const EFFECT_OPTIONS = ['NOV', 'ADV', 'EXH', 'MXM', 'INF', 'GRV', 'HVN', 'VVD', 'XCD', 'NBL', 'ULT'];
 
 function effectSelectOptions(current) {
     return EFFECT_OPTIONS
@@ -126,7 +126,7 @@ async function onSongAction(target) {
     if (!card) return;
 
     const isApprove = target.classList.contains('action-approve');
-    if (!isApprove && !confirm(`選曲提案 ${songId} を却下します。よろしいですか？`)) {
+    if (!isApprove && !(await adminConfirm(`選曲提案 ${songId} を却下します。よろしいですか？`))) {
         return;
     }
 
@@ -191,7 +191,7 @@ async function onScoreAction(target) {
             });
             setInfo(`スコア event=${eventId} submit=${submitId} を承認しました。`, 'ok');
         } else if (target.classList.contains('action-reject')) {
-            if (!confirm(`スコア event=${eventId} submit=${submitId} を却下します。よろしいですか？`)) {
+            if (!(await adminConfirm(`スコア event=${eventId} submit=${submitId} を却下します。よろしいですか？`))) {
                 return;
             }
             await adminFetch(`${scorePath}/reject`, { method: 'POST', body: '{}' });
@@ -448,7 +448,7 @@ scheduleConfigForm.addEventListener('submit', async (ev) => {
         minute: Number(cfgMinuteEl.value),
         durationHours: Number(cfgDurationEl.value),
     };
-    if (!confirm('スケジューリング設定を保存します。未来イベントの start/end が再計算されますが、よろしいですか？')) return;
+    if (!(await adminConfirm('スケジューリング設定を保存します。未来イベントの start/end が再計算されますが、よろしいですか？'))) return;
     try {
         const result = await adminFetch('/api/admin/schedule/config', {
             method: 'PUT',
@@ -483,7 +483,7 @@ reorderSaveBtn.addEventListener('click', async () => {
 });
 
 shuffleBtn.addEventListener('click', async () => {
-    if (!confirm('開催キューをシャッフルします。よろしいですか？')) return;
+    if (!(await adminConfirm('開催キューをシャッフルします。よろしいですか？'))) return;
     shuffleBtn.disabled = true;
     try {
         const res = await adminFetch('/api/admin/schedule/shuffle', { method: 'POST', body: '{}' });
@@ -505,7 +505,7 @@ publishListEl.addEventListener('click', async (ev) => {
     const isPublished = btn.dataset.published === 'true';
     const wantPublish = !isPublished;
     const verb = wantPublish ? '公開' : '非公開化';
-    if (!confirm(`event_id=${id} を${verb}します。よろしいですか？`)) return;
+    if (!(await adminConfirm(`event_id=${id} を${verb}します。よろしいですか？`))) return;
     btn.disabled = true;
     try {
         await adminFetch(`/api/admin/events/${id}/${wantPublish ? 'publish' : 'unpublish'}`, {

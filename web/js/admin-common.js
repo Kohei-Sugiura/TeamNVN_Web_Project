@@ -130,6 +130,8 @@ const ADMIN_NAV = `
   <p class="admin-nav">
     <a href="/admin/">WeePA</a>
     <span class="sep">|</span>
+    <a href="/admin/msc/">ムンチャレ</a>
+    <span class="sep">|</span>
     <a href="/admin/db/">DB管理</a>
     <span class="sep">|</span>
     <a href="#" id="admin-logout-link">ログアウト</a>
@@ -147,4 +149,71 @@ function renderAdminNav(containerSelector) {
             logoutAdmin();
         });
     }
+}
+
+// ============================================
+// 共通の確認ダイアログ (native confirm() の代替。スマホで挙動が
+// 不安定なケースがあるため、投稿フォームと同じ <dialog> 形式に統一)
+// ============================================
+
+function ensureCommonConfirmDialog() {
+    let dialog = document.getElementById('common-confirm-dialog');
+    if (dialog) return dialog;
+    dialog = document.createElement('dialog');
+    dialog.id = 'common-confirm-dialog';
+    dialog.className = 'confirm-dialog';
+    dialog.innerHTML = `
+      <h3 id="common-confirm-title">確認</h3>
+      <div class="dialog-body">
+        <p id="common-confirm-message" style="margin:0; white-space:pre-wrap; word-break:break-word;"></p>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="cancel" data-result="false">戻る</button>
+        <button type="button" data-result="true">OK</button>
+      </div>
+    `;
+    document.body.appendChild(dialog);
+    return dialog;
+}
+
+/**
+ * native confirm() の置き換え。
+ * @param {string} message 表示メッセージ
+ * @param {{ title?: string, okLabel?: string, cancelLabel?: string }} [opts]
+ * @returns {Promise<boolean>} OK が押されたら true、戻る / Esc / バックドロップで false
+ */
+function adminConfirm(message, opts = {}) {
+    const dialog = ensureCommonConfirmDialog();
+    const titleEl = dialog.querySelector('#common-confirm-title');
+    const msgEl = dialog.querySelector('#common-confirm-message');
+    const okBtn = dialog.querySelector('button[data-result="true"]');
+    const cancelBtn = dialog.querySelector('button[data-result="false"]');
+    titleEl.textContent = opts.title ?? '確認';
+    msgEl.textContent = message;
+    okBtn.textContent = opts.okLabel ?? 'OK';
+    cancelBtn.textContent = opts.cancelLabel ?? '戻る';
+
+    return new Promise((resolve) => {
+        let resolved = false;
+        function done(result) {
+            if (resolved) return;
+            resolved = true;
+            dialog.removeEventListener('click', onClick);
+            dialog.removeEventListener('close', onClose);
+            dialog.removeEventListener('cancel', onCancel);
+            try { dialog.close(); } catch { /* already closed */ }
+            resolve(result);
+        }
+        function onClick(ev) {
+            const t = ev.target;
+            if (!(t instanceof HTMLButtonElement)) return;
+            done(t.dataset.result === 'true');
+        }
+        function onClose() { done(false); }
+        function onCancel(ev) { ev.preventDefault(); done(false); }
+        dialog.addEventListener('click', onClick);
+        dialog.addEventListener('close', onClose);
+        dialog.addEventListener('cancel', onCancel);
+        dialog.showModal();
+    });
 }

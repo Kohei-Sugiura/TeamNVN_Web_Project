@@ -1,7 +1,7 @@
 ensureLoggedIn();
 renderAdminNav('#admin-nav');
 
-const EFFECT_OPTIONS = ['NOV', 'ADV', 'EXH', 'MXM', 'INF', 'GRV', 'HVN', 'VVD', 'XCD', 'ULT'];
+const EFFECT_OPTIONS = ['NOV', 'ADV', 'EXH', 'MXM', 'INF', 'GRV', 'HVN', 'VVD', 'XCD', 'NBL', 'ULT'];
 
 function effectSelect(name, current) {
     const opts = EFFECT_OPTIONS
@@ -65,6 +65,76 @@ const TABLES = {
             { key: 'imagePath', label: 'image_path', type: 'text' },
             { key: 'submitDate', label: 'submit_date', type: 'datetime' },
             { key: 'approvalStatus', label: 'status', type: 'status' },
+        ],
+    },
+    // -------- MoonShotChallenge (MSC) --------
+    mscEvents: {
+        label: 'MSC イベント (msc_events)',
+        endpoint: '/api/admin/db/msc-events',
+        rowKey: (r) => `${r.mscEventId}`,
+        pkPath: (r) => `${r.mscEventId}`,
+        columns: [
+            { key: 'mscEventId', label: 'id', type: 'number', pk: 'auto' },
+            { key: 'title', label: 'title', type: 'text', required: true, max: 200 },
+            { key: 'description', label: 'description', type: 'text' },
+            { key: 'startDate', label: 'start_date', type: 'datetime', required: true },
+            { key: 'endDate', label: 'end_date', type: 'datetime', required: true },
+            { key: 'talliedAt', label: 'tallied_at (公開時刻)', type: 'datetime' },
+            { key: 'createdAt', label: 'created_at', type: 'datetime' },
+        ],
+    },
+    mscSongs: {
+        label: 'MSC 課題曲 (msc_songs)',
+        endpoint: '/api/admin/db/msc-songs',
+        rowKey: (r) => `${r.mscEventId}:${r.songOrder}`,
+        pkPath: (r) => `${r.mscEventId}/${r.songOrder}`,
+        columns: [
+            { key: 'mscEventId', label: 'event_id', type: 'number', pk: 'required', min: 1 },
+            { key: 'songOrder', label: 'song_order', type: 'number', pk: 'required', min: 1, max: 4 },
+            { key: 'song', label: 'song', type: 'text', required: true, max: 200 },
+            { key: 'effect', label: 'effect', type: 'effect', required: true },
+        ],
+    },
+    mscSubmissions: {
+        label: 'MSC 提出 (msc_submissions)',
+        endpoint: '/api/admin/db/msc-submissions',
+        rowKey: (r) => `${r.mscEventId}:${r.xId}:${r.submitId}`,
+        pkPath: (r) => `${r.mscEventId}/${encodeURIComponent(r.xId)}/${r.submitId}`,
+        columns: [
+            { key: 'mscEventId', label: 'event_id', type: 'number', pk: 'required', min: 1 },
+            { key: 'xId', label: 'x_id', type: 'text', pk: 'required' },
+            { key: 'submitId', label: 'submit_id', type: 'number', pk: 'optional', min: 1 },
+            { key: 'submitName', label: 'submit_name', type: 'text', required: true },
+            { key: 'platform', label: 'platform (arcade/konaste)', type: 'text', required: true },
+            { key: 'submitDate', label: 'submit_date', type: 'datetime' },
+            { key: 'approvalStatus', label: 'status', type: 'status' },
+        ],
+    },
+    mscScores: {
+        label: 'MSC スコア (msc_scores)',
+        endpoint: '/api/admin/db/msc-scores',
+        rowKey: (r) => `${r.mscEventId}:${r.xId}:${r.submitId}:${r.playOrder}`,
+        pkPath: (r) => `${r.mscEventId}/${encodeURIComponent(r.xId)}/${r.submitId}/${r.playOrder}`,
+        columns: [
+            { key: 'mscEventId', label: 'event_id', type: 'number', pk: 'required', min: 1 },
+            { key: 'xId', label: 'x_id', type: 'text', pk: 'required' },
+            { key: 'submitId', label: 'submit_id', type: 'number', pk: 'required', min: 1 },
+            { key: 'playOrder', label: 'play_order', type: 'number', pk: 'required', min: 1, max: 4 },
+            { key: 'songOrder', label: 'song_order', type: 'number', required: true, min: 1, max: 4 },
+            { key: 'score', label: 'score', type: 'number', required: true, min: 0, max: 10000000 },
+        ],
+    },
+    mscSubmissionImages: {
+        label: 'MSC 提出画像 (msc_submission_images)',
+        endpoint: '/api/admin/db/msc-submission-images',
+        rowKey: (r) => `${r.mscEventId}:${r.xId}:${r.submitId}:${r.playOrder}`,
+        pkPath: (r) => `${r.mscEventId}/${encodeURIComponent(r.xId)}/${r.submitId}/${r.playOrder}`,
+        columns: [
+            { key: 'mscEventId', label: 'event_id', type: 'number', pk: 'required', min: 1 },
+            { key: 'xId', label: 'x_id', type: 'text', pk: 'required' },
+            { key: 'submitId', label: 'submit_id', type: 'number', pk: 'required', min: 1 },
+            { key: 'playOrder', label: 'play_order (0=通し/1..4=各曲)', type: 'number', pk: 'required', min: 0, max: 4 },
+            { key: 'imagePath', label: 'image_path', type: 'text', required: true },
         ],
     },
 };
@@ -279,7 +349,7 @@ async function saveEdit(key) {
 async function deleteRow(key) {
     const row = findByKey(key);
     if (!row) return;
-    if (!confirm(`${key} を削除します。よろしいですか？`)) return;
+    if (!(await adminConfirm(`${key} を削除します。よろしいですか？`))) return;
     try {
         await adminFetch(`${currentTable.endpoint}/${currentTable.pkPath(row)}`, { method: 'DELETE' });
         setStatus(`${key} を削除しました`, 'ok');

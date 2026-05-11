@@ -513,6 +513,23 @@ span.effect.effect-xcd {
   border-color: rgba(46, 161, 255, 0.65);
   text-shadow: 0 0 4px rgba(46, 161, 255, 0.7);
 }
+span.effect.effect-nbl {
+  /* ナブラ (∇) — 緑 → 黄緑のグラデ */
+  color: #e8ffb8;
+  background:
+    linear-gradient(135deg,
+      rgba(40, 200, 80, 0.35) 0%,
+      rgba(110, 230, 70, 0.42) 50%,
+      rgba(200, 245, 40, 0.35) 100%
+    );
+  border-color: rgba(140, 240, 60, 0.85);
+  box-shadow:
+    0 0 10px rgba(120, 220, 60, 0.4),
+    0 0 18px rgba(200, 240, 40, 0.2);
+  text-shadow:
+    0 0 4px rgba(120, 220, 60, 0.9),
+    0 0 8px rgba(200, 240, 40, 0.55);
+}
 span.effect.effect-ult {
   color: #fff8d6;
   background:
@@ -1558,6 +1575,94 @@ button.toggle-switch:disabled .toggle-slider {
   }
   dialog.confirm-dialog .dialog-actions {
     padding: 12px 14px 14px;
+  }
+}
+
+/* ============================================
+ * MSC (ムンチャレ) イベント作成フォーム — 課題曲行
+ * ============================================ */
+.msc-songs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.msc-song-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.msc-song-row .msc-song-order-label {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  color: #00e5ff;
+  letter-spacing: 0.06em;
+  min-width: 4em;
+}
+
+.msc-song-row input[type="text"] {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 1rem;
+  font-family: inherit;
+  color: #fff;
+  background: rgba(8, 8, 22, 0.7);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  border-radius: 4px;
+}
+
+.msc-song-row input[type="text"]:focus {
+  outline: none;
+  border-color: #00e5ff;
+  background: rgba(8, 8, 22, 0.9);
+}
+
+.msc-song-row select {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  font-size: 1rem;
+  font-family: inherit;
+  color: #fff;
+  background: #0c0c1f;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 4px;
+}
+
+.msc-song-row .msc-remove-song {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #fff;
+  background: linear-gradient(135deg, #ff3d8a 0%, #bb00ff 100%);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.msc-song-row .msc-remove-song:disabled {
+  background: #40405a;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 600px) {
+  .msc-song-row {
+    gap: 8px;
+  }
+  .msc-song-row input[type="text"] {
+    flex-basis: 100%;
+    min-height: 44px;
+  }
+  .msc-song-row select {
+    min-height: 44px;
   }
 }
 
