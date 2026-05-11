@@ -77,9 +77,13 @@
         <!-- ============== スコア承認 ============== -->
         <section class="event-card msc-tab-panel" data-tab="scores" hidden>
             <h2>スコア承認待ち</h2>
-            <p class="hint">WeePA と同じく未承認スコアを承認 / 却下します。仕様は WeePA と基本同じ予定 (UI 仕様確定後に実装)。</p>
+            <p class="hint">承認時は各 Track のスコアを修正できます。承認すると pending 画像は物理削除されます。</p>
+            <div class="form-actions">
+                <button type="button" id="msc-pending-reload-btn">再読み込み</button>
+            </div>
+            <p id="msc-scores-result" class="result" role="status" aria-live="polite"></p>
             <div id="msc-pending-scores" class="admin-list">
-                <p class="hint">(API 実装後に表示されます)</p>
+                <p class="loading">読み込み中...</p>
             </div>
         </section>
 

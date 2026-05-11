@@ -1690,6 +1690,38 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 }
 
 /* ============================================
+ * MSC 管理画面 — スコア承認カード (各 Track を縦並び)
+ * ============================================ */
+.msc-pending-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 6px 0 10px;
+}
+.msc-pending-track {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.msc-pending-score {
+  padding: 8px 10px;
+  font-size: 1rem;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: #fff;
+  background: #0c0c1f;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 4px;
+  max-width: 220px;
+}
+.msc-pending-score:focus {
+  outline: none;
+  border-color: rgba(0, 229, 255, 0.7);
+  box-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
+}
+
+/* ============================================
  * MSC スコア投稿 — plays grid + platform radio
  * ============================================ */
 .msc-platform-radio {

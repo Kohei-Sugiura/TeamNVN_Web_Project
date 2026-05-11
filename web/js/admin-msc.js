@@ -12,6 +12,9 @@ const mscCreateResult = document.getElementById('msc-create-result');
 const mscEventsListEl = document.getElementById('msc-events-list');
 const mscTabsEl = document.getElementById('msc-tabs');
 const mscPanels = document.querySelectorAll('.msc-tab-panel');
+const mscPendingScoresEl = document.getElementById('msc-pending-scores');
+const mscPendingReloadBtn = document.getElementById('msc-pending-reload-btn');
+const mscScoresResultEl = document.getElementById('msc-scores-result');
 
 function mscSetResult(text, kind) {
     if (!mscCreateResult) return;
@@ -199,6 +202,158 @@ function renderMscEventsList(events) {
 }
 
 // ============================================
+// スコア承認サブタブ
+// ============================================
+
+function trackLabel(playOrder) {
+    if (playOrder === 4) return 'EX Track';
+    const suf = { 1: 'st', 2: 'nd', 3: 'rd' };
+    return `${playOrder}${suf[playOrder]} Track`;
+}
+
+function setScoresResult(text, kind) {
+    if (!mscScoresResultEl) return;
+    mscScoresResultEl.textContent = text;
+    mscScoresResultEl.className = `result ${kind}`;
+}
+
+function renderPendingSubmissionCard(sub) {
+    const playsByOrder = new Map(sub.plays.map((p) => [p.playOrder, p]));
+    const imagesByOrder = new Map(sub.images.map((i) => [i.playOrder, i.imagePath]));
+    const key = `${sub.mscEventId}:${encodeURIComponent(sub.xId)}:${sub.submitId}`;
+
+    // 各 Track を info-row パターンで縦並び (ラベル "1st Track" シアン → 楽曲名 → スコア入力 → 画像リンク)
+    const scoreInputs = [];
+    for (let i = 1; i <= 4; i++) {
+        const p = playsByOrder.get(i);
+        if (!p) continue;
+        const effectBadge = `<span class="effect effect-${(p.effect || '').toLowerCase()}">${escapeHtml(p.effect)}</span>`;
+        const img = imagesByOrder.get(i);
+        const imgLink = img
+            ? `<p><a href="${encodeURI(img)}" target="_blank" rel="noopener noreferrer">画像を開く</a></p>`
+            : '';
+        scoreInputs.push(`
+          <div class="msc-pending-track">
+            <p class="info-row"><span class="label">${trackLabel(i)}</span>${escapeHtml(p.song)} ${effectBadge}</p>
+            <input type="number" class="msc-pending-score" data-play-order="${i}"
+                   value="${p.score}" min="0" max="10000000" step="1" inputmode="numeric">
+            ${imgLink}
+          </div>
+        `);
+    }
+
+    // summary 画像 (play_order=0)
+    const summaryImg = imagesByOrder.get(0);
+    const summaryHtml = summaryImg
+        ? `<p class="info-row" style="margin-top:14px;"><span class="label">通しリザルト</span><a href="${encodeURI(summaryImg)}" target="_blank" rel="noopener noreferrer">画像を開く</a></p>`
+        : '';
+
+    // 合計スコア (各曲ベスト合算)
+    const bestPerSong = new Map();
+    for (const p of sub.plays) {
+        const cur = bestPerSong.get(p.songOrder) ?? -1;
+        if (p.score > cur) bestPerSong.set(p.songOrder, p.score);
+    }
+    const total = Array.from(bestPerSong.values()).reduce((a, b) => a + b, 0);
+
+    return `
+      <article class="admin-item" data-key="${key}">
+        <p><strong>${escapeHtml(sub.eventTitle)}</strong></p>
+        <p class="info-row"><span class="label">投稿者</span>${escapeHtml(sub.submitName)} (@${escapeHtml(sub.xId)})</p>
+        <p class="info-row"><span class="label">プレー環境</span>${sub.platform === 'arcade' ? 'アーケード' : 'コナステ'}</p>
+        <div class="msc-pending-tracks">
+          ${scoreInputs.join('')}
+        </div>
+        ${summaryHtml}
+        <p class="info-row" style="margin-top:14px;"><span class="label">投稿日時</span>${escapeHtml(mscYmdHm(sub.submitDate))}</p>
+        <p class="info-row"><span class="label">合計スコア (各曲ベスト合算)</span>${total.toLocaleString('en-US')}</p>
+        <div class="admin-actions"
+             data-event-id="${sub.mscEventId}"
+             data-x-id="${escapeHtml(sub.xId)}"
+             data-submit-id="${sub.submitId}">
+          <button type="button" class="action-approve">承認</button>
+          <button type="button" class="action-reject">却下</button>
+        </div>
+      </article>
+    `;
+}
+
+async function loadPendingSubmissions() {
+    if (!mscPendingScoresEl) return;
+    mscPendingScoresEl.innerHTML = '<p class="loading">読み込み中...</p>';
+    setScoresResult('', '');
+    try {
+        const list = await adminFetch('/api/admin/msc/submissions/pending');
+        if (!list || list.length === 0) {
+            mscPendingScoresEl.innerHTML = '<p class="empty">未承認のスコア投稿はありません。</p>';
+            return;
+        }
+        mscPendingScoresEl.innerHTML = list.map(renderPendingSubmissionCard).join('');
+    } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
+        mscPendingScoresEl.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    }
+}
+
+if (mscPendingReloadBtn) {
+    mscPendingReloadBtn.addEventListener('click', loadPendingSubmissions);
+}
+
+if (mscPendingScoresEl) {
+    mscPendingScoresEl.addEventListener('click', async (ev) => {
+        const target = ev.target;
+        if (!(target instanceof HTMLButtonElement)) return;
+        const actionsEl = target.closest('.admin-actions');
+        if (!actionsEl) return;
+        const eventId = actionsEl.dataset.eventId;
+        const xId = actionsEl.dataset.xId;
+        const submitId = actionsEl.dataset.submitId;
+        if (!eventId || !xId || !submitId) return;
+        const card = target.closest('.admin-item');
+
+        if (target.classList.contains('action-approve')) {
+            // 各 Track のスコア入力値を収集 (修正があれば反映)
+            const plays = Array.from(card.querySelectorAll('.msc-pending-score')).map((el) => ({
+                playOrder: Number(el.dataset.playOrder),
+                score: Number(el.value),
+            })).filter((p) => Number.isFinite(p.score));
+            if (plays.some((p) => p.score < 0 || p.score > 10000000)) {
+                setScoresResult('スコアは 0〜10,000,000 の範囲です', 'ng');
+                return;
+            }
+            if (!(await adminConfirm(`event=${eventId} / @${xId} / submit_id=${submitId} を承認します。よろしいですか？`))) return;
+            target.disabled = true;
+            try {
+                await adminFetch(`/api/admin/msc/submissions/${eventId}/${xId}/${submitId}/approve`, {
+                    method: 'POST',
+                    body: JSON.stringify({ plays }),
+                });
+                setScoresResult('承認しました', 'ok');
+                await loadPendingSubmissions();
+            } catch (err) {
+                if (err.message === 'AUTH_REDIRECT') return;
+                setScoresResult(err.message, 'ng');
+                target.disabled = false;
+            }
+        } else if (target.classList.contains('action-reject')) {
+            if (!(await adminConfirm(`event=${eventId} / @${xId} / submit_id=${submitId} を却下します。よろしいですか？`))) return;
+            target.disabled = true;
+            try {
+                await adminFetch(`/api/admin/msc/submissions/${eventId}/${xId}/${submitId}/reject`, {
+                    method: 'POST', body: '{}',
+                });
+                setScoresResult('却下しました', 'ok');
+                await loadPendingSubmissions();
+            } catch (err) {
+                if (err.message === 'AUTH_REDIRECT') return;
+                setScoresResult(err.message, 'ng');
+                target.disabled = false;
+            }
+        }
+    });
+}
+
+// ============================================
 // タブ切替
 // ============================================
 function selectMscTab(tab) {
@@ -211,6 +366,9 @@ function selectMscTab(tab) {
     if (tab === 'events') {
         ensureMscSongsRows();
         loadMscEvents();
+    }
+    if (tab === 'scores') {
+        loadPendingSubmissions();
     }
     if (history.replaceState) {
         const url = new URL(window.location.href);
