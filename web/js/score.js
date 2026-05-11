@@ -59,6 +59,14 @@ function showFieldError(key, message) {
   if (el) el.textContent = message;
 }
 
+function scrollToFirstError() {
+  const firstError = Array.from(document.querySelectorAll('.error[data-for]'))
+    .find((el) => el.textContent.trim() !== '');
+  if (!firstError) return;
+  const target = firstError.closest('.field') || firstError;
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function mapServerErrors(errors) {
   if (!errors) return;
   const norm = {};
@@ -78,9 +86,7 @@ function renderEventHeader(ev) {
       <span class="song">${escapeHtml(ev.song)}</span>
       <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
     </div>
-    <p class="period">
-      ${escapeHtml(formatDate(ev.startDate))} ～ ${escapeHtml(formatDate(ev.endDate))}
-    </p>
+    <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatDate(ev.startDate))} ～ ${escapeHtml(formatDate(ev.endDate))}</p>
   `;
 }
 
@@ -217,6 +223,7 @@ async function actuallySubmit(snap) {
       resultEl.textContent = data.message
         ?? '入力内容にエラーがあります。各項目の赤字メッセージをご確認ください。';
       resultEl.className = 'result ng';
+      scrollToFirstError();
     } else if (res.status === 413) {
       resultEl.textContent = '画像サイズが大きすぎます (上限 20 MB)。';
       resultEl.className = 'result ng';

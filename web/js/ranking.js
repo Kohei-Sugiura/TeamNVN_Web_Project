@@ -24,9 +24,7 @@ function renderEventHeader(ev) {
       <span class="song">${escapeHtml(ev.song)}</span>
       <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
     </div>
-    <p class="period">
-      開催期間: ${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}
-    </p>
+    <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
   `;
 }
 

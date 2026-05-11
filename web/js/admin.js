@@ -24,8 +24,8 @@ function effectSelectOptions(current) {
 
 function songCard(item) {
     const reason = item.submitReason
-        ? `<p>理由: ${escapeHtml(item.submitReason)}</p>`
-        : '<p>理由: (未入力)</p>';
+        ? `<p class="info-row"><span class="label">理由</span>${escapeHtml(item.submitReason)}</p>`
+        : '<p class="info-row"><span class="label">理由</span><span class="muted">(未入力)</span></p>';
 
     return `
     <article class="admin-item" data-song-id="${item.weepaSongId}">
@@ -37,9 +37,9 @@ function songCard(item) {
           <select class="edit-effect">${effectSelectOptions(item.effect)}</select>
         </label>
       </div>
-      <p>提案者: ${escapeHtml(item.submitName)} (@${escapeHtml(item.xId)})</p>
+      <p class="info-row"><span class="label">提案者</span>${escapeHtml(item.submitName)} (@${escapeHtml(item.xId)})</p>
       ${reason}
-      <p class="period">投稿日時: ${escapeHtml(formatDate(item.submitDate))}</p>
+      <p class="info-row"><span class="label">投稿日時</span>${escapeHtml(formatDate(item.submitDate))}</p>
       <div class="admin-actions">
         <button type="button" class="action-approve" data-song-id="${item.weepaSongId}">承認</button>
         <button type="button" class="action-reject" data-song-id="${item.weepaSongId}">却下</button>
@@ -50,15 +50,15 @@ function songCard(item) {
 
 function scoreCard(item) {
     const imageLink = item.imagePath
-        ? `<p><a href="${encodeURI(item.imagePath)}" target="_blank" rel="noopener noreferrer">投稿画像を表示</a></p>`
-        : '<p>投稿画像: (なし)</p>';
+        ? `<p class="info-row"><span class="label">投稿画像</span><a href="${encodeURI(item.imagePath)}" target="_blank" rel="noopener noreferrer">投稿画像を表示</a></p>`
+        : '<p class="info-row"><span class="label">投稿画像</span><span class="muted">(なし)</span></p>';
 
     const key = `${item.weepaEventId}:${item.xId}:${item.submitId}`;
 
     return `
     <article class="admin-item" data-key="${key}">
       <p><strong>${escapeHtml(item.song)}</strong> <span class="effect effect-${(item.effect || '').toLowerCase()}">${escapeHtml(item.effect)}</span></p>
-      <p>投稿者: ${escapeHtml(item.submitName)} (@${escapeHtml(item.xId)})</p>
+      <p class="info-row"><span class="label">投稿者</span>${escapeHtml(item.submitName)} (@${escapeHtml(item.xId)})</p>
       <div class="admin-edit-fields">
         <label>スコア
           <input type="number" class="edit-score" value="${item.score}" min="0" max="10000000">
@@ -68,7 +68,7 @@ function scoreCard(item) {
         </label>
       </div>
       ${imageLink}
-      <p class="period">投稿日時: ${escapeHtml(formatDate(item.submitDate))}</p>
+      <p class="info-row"><span class="label">投稿日時</span>${escapeHtml(formatDate(item.submitDate))}</p>
       <div class="admin-actions"
            data-event-id="${item.weepaEventId}"
            data-x-id="${escapeHtml(item.xId)}"
@@ -262,7 +262,7 @@ function renderCurrentEvent(current) {
         <span class="song">${escapeHtml(current.song)}</span>
         ${effectBadgeHtml(current.effect)}
       </div>
-      <p>選曲者: ${escapeHtml(current.submitName)} (@${escapeHtml(current.xId)})</p>
+      <p class="info-row"><span class="label">選曲者</span>${escapeHtml(current.submitName)} (@${escapeHtml(current.xId)})</p>
       <div class="admin-edit-fields">
         <label>開始日時
           <input type="datetime-local" id="current-start" value="${isoToLocalInput(current.startDate)}">

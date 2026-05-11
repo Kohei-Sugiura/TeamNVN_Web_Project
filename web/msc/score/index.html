@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スコア投稿 - MoonShotChallenge</title>
+    <meta name="description" content="MoonShotChallenge にスコアを投稿するフォーム。">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Team NVN">
+    <meta property="og:title" content="スコア投稿 - MoonShotChallenge / Team NVN">
+    <meta property="og:description" content="MoonShotChallenge にスコアを投稿するフォーム。">
+    <meta property="og:image" content="https://team-nvn-server.com/image/TeamNVN_icon.png">
+    <meta property="og:url" content="https://team-nvn-server.com/msc/score/">
+    <link rel="icon" type="image/png" href="/image/TeamNVN_icon.png">
+    <link rel="apple-touch-icon" href="/image/TeamNVN_icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Noto+Sans+JP:wght@400;700&display=swap">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <main class="container">
+        <header class="site-header">
+            <h1><a href="/"><img class="site-header-logo" src="/image/TeamNVN_icon.png" alt=""><span class="site-header-name">Team NVN</span></a></h1>
+            <p class="subtitle">SOUND VOLTEX 交流チーム</p>
+        </header>
+        <h1>ムンチャレ スコア投稿</h1>
+        <p>現在開催中の MoonShotChallenge にスコアを投稿します。</p>
+
+        <section class="event-card">
+            <div id="event-display" class="event-display">
+                <p class="loading">読み込み中...</p>
+            </div>
+        </section>
+
+        <p id="result" class="result" role="status" aria-live="polite"></p>
+
+        <form id="msc-score-form" class="form" novalidate enctype="multipart/form-data" hidden>
+            <div class="field">
+                <label for="xId">X (Twitter) ID <span class="required">*</span></label>
+                <input type="text" id="xId" name="xId" required maxlength="100" placeholder="@abc_player">
+                <p class="hint">例: @abc_player</p>
+                <p class="error" data-for="xId"></p>
+            </div>
+
+            <div class="field">
+                <label for="submitName">投稿者名 <span class="required">*</span></label>
+                <input type="text" id="submitName" name="submitName" required maxlength="50">
+                <p class="error" data-for="submitName"></p>
+            </div>
+
+            <div class="field">
+                <label>プレー環境 <span class="required">*</span></label>
+                <div class="msc-platform-radio">
+                    <label><input type="radio" name="platform" value="arcade" checked> アーケード (通しリザルト 1 枚)</label>
+                    <label><input type="radio" name="platform" value="konaste"> コナステ (各リザルト + summary)</label>
+                </div>
+                <p class="error" data-for="platform"></p>
+            </div>
+
+            <h3>プレイ結果</h3>
+            <div id="msc-plays-list"></div>
+            <p class="error" data-for="plays"></p>
+
+            <h3 style="margin-top:20px;">リザルト画像</h3>
+            <div id="msc-images-arcade">
+                <div class="field">
+                    <label for="imageSummary">通しリザルト <span class="required">*</span></label>
+                    <input type="file" id="imageSummary" name="imageSummary" accept="image/jpeg,image/png,image/webp,image/*">
+                    <p class="hint">JPEG / PNG / WebP、最大 20 MB</p>
+                    <p class="error" data-for="imageSummary"></p>
+                </div>
+            </div>
+            <div id="msc-images-konaste" hidden>
+                <div class="field">
+                    <label for="imageSummaryK">通しリザルト (summary) <span class="required">*</span></label>
+                    <input type="file" id="imageSummaryK" name="imageSummary" accept="image/jpeg,image/png,image/webp,image/*">
+                    <p class="hint">クレジット全体の summary。JPEG / PNG / WebP、最大 20 MB</p>
+                    <p class="error" data-for="imageSummaryK"></p>
+                </div>
+                <p class="hint">各トラックのリザルト画像 (指定楽曲は必須、リトライ枠は任意) は下の Track ブロック内で個別に指定してください。</p>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" id="submit-btn">スコアを投稿する</button>
+            </div>
+        </form>
+
+        <dialog id="confirm-dialog" class="confirm-dialog">
+            <h3>投稿内容の確認</h3>
+            <div class="dialog-body" id="confirm-body"></div>
+            <div class="dialog-actions">
+                <button type="button" id="confirm-cancel" class="cancel">戻る</button>
+                <button type="button" id="confirm-ok">投稿する</button>
+            </div>
+        </dialog>
+    </main>
+
+    <script src="/js/file-drop.js"></script>
+    <script src="/js/msc-score.js"></script>
+</body>
+
+</html>

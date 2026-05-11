@@ -46,6 +46,14 @@ function showFieldError(key, message) {
   if (el) el.textContent = message;
 }
 
+function scrollToFirstError() {
+  const firstError = Array.from(document.querySelectorAll('.error[data-for]'))
+    .find((el) => el.textContent.trim() !== '');
+  if (!firstError) return;
+  const target = firstError.closest('.field') || firstError;
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function mapServerErrors(errors) {
   if (!errors) return;
   const norm = {};
@@ -115,6 +123,7 @@ async function actuallySubmit(payload) {
       mapServerErrors(data.errors);
       resultEl.textContent = '入力内容にエラーがあります。各項目の赤字メッセージをご確認ください。';
       resultEl.className = 'result ng';
+      scrollToFirstError();
     } else {
       resultEl.textContent = `送信に失敗しました (HTTP ${res.status})。時間をおいて再度お試しください。`;
       resultEl.className = 'result ng';

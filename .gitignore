@@ -38,3 +38,6 @@ uploads/
 
 # pg_dump バックアップ (本番データを含むので git に入れない)
 backup-*.sql
+
+# DB バックアップ抽出物 (CSV 等)。本番データを含むので git に入れない
+db/backups/*.csv

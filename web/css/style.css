@@ -952,21 +952,26 @@ span.effect.effect-ult {
     drop-shadow(0 0 12px rgba(255, 140, 0, 0.65));
 }
 
-/* トップページの WeePA カード (active / recent) で使う情報行を統一スタイルに。
-   開催期間 / 提案者 / 選曲理由 のラベル部分は共通 .label でシアンに揃える。 */
-.weepa-status-body .info-row,
-.recent-events .info-row {
-  margin: 6px 0 0;
-  font-size: 0.9rem;
-  color: #c0c0d8;
+/* 情報行 (開催期間 / 提案者 / 選曲理由 / 投稿日時 など) は全ページで共通スタイルに。
+   ラベルはシアンで 1 行目、値は次の行に改行される。 */
+.info-row {
+  margin: 8px 0 0;
+  font-size: 0.95rem;
+  color: #eaeaf0;
   letter-spacing: 0.02em;
 }
-
-.weepa-status-body .info-row .label,
-.recent-events .info-row .label {
+.info-row .label {
+  display: block;
+  margin-bottom: 2px;
   color: #00e5ff;
-  margin-right: 4px;
+  font-size: 0.82rem;
   letter-spacing: 0.06em;
+  text-shadow: 0 0 4px rgba(0, 229, 255, 0.3);
+}
+
+/* 汎用 muted (灰色テキスト) */
+.muted {
+  color: #6f6f8a;
 }
 
 dialog.confirm-dialog {
@@ -1681,6 +1686,195 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   }
   .msc-song-row select {
     min-height: 44px;
+  }
+}
+
+/* ============================================
+ * MSC スコア投稿 — plays grid + platform radio
+ * ============================================ */
+.msc-platform-radio {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.msc-platform-radio label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+  color: #eaeaf0;
+  cursor: pointer;
+}
+.msc-platform-radio input[type="radio"] {
+  width: auto;
+  height: auto;
+  margin: 0;
+  accent-color: #00e5ff;
+}
+
+#msc-plays-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+.msc-play-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: rgba(8, 8, 22, 0.5);
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  border-radius: 8px;
+}
+.msc-play-row[data-mandatory="false"] {
+  border-color: rgba(255, 61, 138, 0.30);
+}
+
+/* .event-card h2 (0,1,1) を上書きするため .event-card .msc-event-title (0,2,0) で書く */
+.event-card .msc-event-title,
+.msc-event-title {
+  margin: 0 0 14px;
+  font-size: 1.7rem;
+  font-weight: bold;
+  letter-spacing: 0.03em;
+  color: #fff;
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.35);
+  line-height: 1.25;
+}
+@media (max-width: 600px) {
+  .event-card .msc-event-title,
+  .msc-event-title { font-size: 1.35rem; }
+}
+
+/* Track 見出し ("1st Track" など) は大きめ */
+.msc-play-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.msc-play-track-name {
+  font-size: 1.25rem;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  color: #00e5ff;
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.35);
+}
+.msc-play-row[data-mandatory="false"] .msc-play-track-name {
+  color: #ff70a8;
+  text-shadow: 0 0 6px rgba(255, 61, 138, 0.35);
+}
+
+/* 必修楽曲名 / リトライ選択肢の楽曲名 */
+.msc-play-song-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.msc-play-song-name {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #fff;
+}
+
+/* タグ (必修 / リトライ枠) */
+.msc-mandatory-tag,
+.msc-retry-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  vertical-align: middle;
+  letter-spacing: 0.04em;
+}
+.msc-mandatory-tag {
+  color: #00e5ff;
+  background: rgba(0, 229, 255, 0.12);
+  border: 1px solid rgba(0, 229, 255, 0.5);
+}
+.msc-retry-tag {
+  color: #ff70a8;
+  background: rgba(255, 61, 138, 0.12);
+  border: 1px solid rgba(255, 61, 138, 0.5);
+}
+
+/* リトライ枠ラジオは縦並び */
+.msc-retry-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.msc-retry-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+  color: #eaeaf0;
+  cursor: pointer;
+}
+.msc-retry-option input[type="radio"] {
+  width: auto;
+  height: auto;
+  margin: 0;
+  accent-color: #00e5ff;
+  flex: 0 0 auto;
+}
+.msc-retry-option .msc-retry-option-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Track 内 score / 画像 field */
+.msc-play-score-field,
+.msc-play-image-field {
+  margin: 0;
+}
+.msc-play-row input[name="score"]:disabled {
+  background: rgba(8, 8, 22, 0.35);
+  color: #6f6f8a;
+  border-color: rgba(255, 255, 255, 0.08);
+  cursor: not-allowed;
+}
+
+/* arcade 時は各 Track の画像欄を非表示 */
+#msc-score-form.platform-arcade .msc-play-image-field {
+  display: none;
+}
+
+/* ドラッグ&ドロップ中の file input field のハイライト */
+.field.drag-over {
+  position: relative;
+}
+.field.drag-over input[type="file"] {
+  outline: 2px dashed #00e5ff;
+  outline-offset: 2px;
+  background: rgba(0, 229, 255, 0.10);
+}
+.field.drag-over::after {
+  content: 'ドロップで画像をセット';
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  font-size: 0.85rem;
+  color: #00e5ff;
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+  pointer-events: none;
+}
+
+@media (max-width: 600px) {
+  .msc-play-track-name {
+    font-size: 1.15rem;
+  }
+  .msc-play-song-name {
+    font-size: 1.05rem;
   }
 }
 
