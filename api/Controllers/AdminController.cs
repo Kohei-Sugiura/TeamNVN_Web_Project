@@ -98,26 +98,60 @@ public class AdminController : ControllerBase
             return NotFound(new { message = "未承認の対象データが見つかりません" });
         }
 
-        // 承認時に開催枠 (event) を自動生成。
-        // 起点 = 既存全イベントの最遅 end_date が未来ならそれ、そうでなければ NOW。
-        // そこから「現在のスケジューリング設定 (曜日/時刻) における直後の発生時刻」
-        // を計算して新イベントの start にする。end = start + durationHours。
-        // これにより手動でイベント日時が崩されていても、新規承認は必ず設定通り
-        // のスロットに整列される。
-        var lastEnd = await conn.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
-            "SELECT MAX(end_date) FROM weepa_events",
-            transaction: tx,
-            cancellationToken: ct));
+        // 承認時に開催枠 (event) を自動生成し、未開催キュー内の **ランダム位置** に挿入する。
+        // 同一人物が連続投稿しても順番が分散するため。位置 k (0..n) を選び:
+        //   - k == n の場合: 末尾追加 (既存のスロット計算ロジック)
+        //   - k <  n の場合: 位置 k 以降の event を 7 日 forward シフトして
+        //                    新規イベントを元の k 番のスロットに入れる
+        var futureEvents = (await conn.QueryAsync<(int weepaEventId, DateTime startDate, DateTime endDate)>(
+            new CommandDefinition(
+                """
+                SELECT weepa_event_id AS weepaEventId,
+                       start_date     AS startDate,
+                       end_date       AS endDate
+                FROM weepa_events
+                WHERE start_date > NOW()
+                ORDER BY start_date ASC
+                FOR UPDATE
+                """,
+                transaction: tx, cancellationToken: ct))).ToList();
 
-        var nowUtc = DateTimeOffset.UtcNow;
-        DateTimeOffset anchor = lastEnd.HasValue && new DateTimeOffset(lastEnd.Value, TimeSpan.Zero) > nowUtc
-            ? new DateTimeOffset(lastEnd.Value, TimeSpan.Zero)
-            : nowUtc;
+        var n = futureEvents.Count;
+        var k = Random.Shared.Next(0, n + 1);
 
-        var anchorLocal = TimeZoneInfo.ConvertTime(anchor, settings.TimeZone);
-        var startLocal = CalculateNextOccurrenceLocal(
-            anchorLocal, settings.DayOfWeek, settings.Hour, settings.Minute);
-        var start = startLocal.ToUniversalTime();
+        DateTimeOffset start;
+        if (k == n)
+        {
+            // 末尾追加: 既存全イベントの最遅 end_date が未来ならそれを基準、
+            // でなければ NOW を起点に「設定通りの次のスロット」を求める
+            var lastEnd = await conn.ExecuteScalarAsync<DateTime?>(new CommandDefinition(
+                "SELECT MAX(end_date) FROM weepa_events",
+                transaction: tx, cancellationToken: ct));
+            var nowUtc = DateTimeOffset.UtcNow;
+            DateTimeOffset anchor = lastEnd.HasValue && new DateTimeOffset(lastEnd.Value, TimeSpan.Zero) > nowUtc
+                ? new DateTimeOffset(lastEnd.Value, TimeSpan.Zero)
+                : nowUtc;
+            var anchorLocal = TimeZoneInfo.ConvertTime(anchor, settings.TimeZone);
+            var startLocal = CalculateNextOccurrenceLocal(
+                anchorLocal, settings.DayOfWeek, settings.Hour, settings.Minute);
+            start = startLocal.ToUniversalTime();
+        }
+        else
+        {
+            // 位置 k に挿入: k..n-1 を 7 日 forward シフト
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                UPDATE weepa_events
+                SET start_date = start_date + INTERVAL '7 days',
+                    end_date   = end_date   + INTERVAL '7 days'
+                WHERE weepa_event_id = ANY(@Ids)
+                """,
+                new { Ids = futureEvents.Skip(k).Select(e => e.weepaEventId).ToArray() },
+                transaction: tx, cancellationToken: ct));
+            // 元々位置 k だった start_date を新規イベントが取る
+            start = new DateTimeOffset(futureEvents[k].startDate, TimeSpan.Zero);
+        }
+
         var end = start.AddHours(settings.DurationHours);
 
         await conn.ExecuteAsync(new CommandDefinition(
@@ -130,7 +164,7 @@ public class AdminController : ControllerBase
             cancellationToken: ct));
 
         await tx.CommitAsync(ct);
-        return Ok(new { message = "ok", scheduledStart = start, scheduledEnd = end });
+        return Ok(new { message = "ok", scheduledStart = start, scheduledEnd = end, insertedAtPosition = k });
     }
 
     [HttpPost("songs/{id:int}/reject")]
@@ -557,6 +591,59 @@ public class AdminController : ControllerBase
 
         await tx.CommitAsync(ct);
         return Ok(new { message = "ok" });
+    }
+
+    [HttpPost("schedule/shuffle")]
+    public async Task<IActionResult> ShuffleSchedule(CancellationToken ct)
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var upcoming = (await conn.QueryAsync<(int weepaEventId, DateTime startDate, DateTime endDate)>(
+            new CommandDefinition(
+                """
+                SELECT weepa_event_id AS weepaEventId,
+                       start_date     AS startDate,
+                       end_date       AS endDate
+                FROM weepa_events
+                WHERE start_date > NOW()
+                ORDER BY start_date ASC
+                FOR UPDATE
+                """,
+                transaction: tx, cancellationToken: ct))).ToList();
+
+        if (upcoming.Count <= 1)
+        {
+            await tx.RollbackAsync(ct);
+            return Ok(new { message = "shuffle 対象が 0〜1 件のためスキップ", count = upcoming.Count });
+        }
+
+        // Fisher-Yates で id 列をシャッフル
+        var ids = upcoming.Select(x => x.weepaEventId).ToArray();
+        for (int i = ids.Length - 1; i > 0; i--)
+        {
+            int j = Random.Shared.Next(0, i + 1);
+            (ids[i], ids[j]) = (ids[j], ids[i]);
+        }
+
+        var slots = upcoming.Select(x => (x.startDate, x.endDate)).ToList();
+        for (var i = 0; i < ids.Length; i++)
+        {
+            await conn.ExecuteAsync(new CommandDefinition(
+                """
+                UPDATE weepa_events
+                SET start_date = @Start, end_date = @End
+                WHERE weepa_event_id = @Id
+                """,
+                new { Id = ids[i], Start = slots[i].startDate, End = slots[i].endDate },
+                transaction: tx, cancellationToken: ct));
+        }
+
+        await tx.CommitAsync(ct);
+        return Ok(new { message = "ok", count = ids.Length });
     }
 
     [HttpPut("schedule/config")]

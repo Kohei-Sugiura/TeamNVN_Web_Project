@@ -223,6 +223,7 @@ const cfgHourEl = document.getElementById('cfg-hour');
 const cfgMinuteEl = document.getElementById('cfg-minute');
 const cfgDurationEl = document.getElementById('cfg-duration');
 const reorderSaveBtn = document.getElementById('reorder-save-btn');
+const shuffleBtn = document.getElementById('shuffle-btn');
 
 const DAY_OF_WEEK_LABEL = {
     Sunday: '日曜', Monday: '月曜', Tuesday: '火曜', Wednesday: '水曜',
@@ -478,6 +479,21 @@ reorderSaveBtn.addEventListener('click', async () => {
         setInfo(err.message, 'ng');
     } finally {
         reorderSaveBtn.disabled = false;
+    }
+});
+
+shuffleBtn.addEventListener('click', async () => {
+    if (!confirm('開催キューをシャッフルします。よろしいですか？')) return;
+    shuffleBtn.disabled = true;
+    try {
+        const res = await adminFetch('/api/admin/schedule/shuffle', { method: 'POST', body: '{}' });
+        setInfo(`キューをシャッフルしました (${res?.count ?? 0} 件)`, 'ok');
+        await loadSchedule();
+    } catch (err) {
+        if (err.message === 'AUTH_REDIRECT') return;
+        setInfo(err.message, 'ng');
+    } finally {
+        shuffleBtn.disabled = false;
     }
 });
 

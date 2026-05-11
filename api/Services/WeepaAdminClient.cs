@@ -65,4 +65,7 @@ public sealed class WeepaAdminClient
 
     public Task<HttpResponseMessage> UnpublishEventAsync(int id, CancellationToken ct) =>
         _http.PostAsync($"/api/admin/events/{id}/unpublish", null, ct);
+
+    public Task<HttpResponseMessage> ShuffleScheduleAsync(CancellationToken ct) =>
+        _http.PostAsync("/api/admin/schedule/shuffle", null, ct);
 }

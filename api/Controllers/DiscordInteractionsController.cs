@@ -205,6 +205,18 @@ public class DiscordInteractionsController : ControllerBase
             return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
         }
 
+        if (name == "weepa-events-shuffle")
+        {
+            _ = Task.Run(() => HandleEventsShuffleAsync(token));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "weepa-events-schedules")
+        {
+            _ = Task.Run(() => HandleEventsSchedulesAsync(token));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
         return Json(new
         {
             type = RESP_CHANNEL_MESSAGE,
@@ -497,6 +509,70 @@ public class DiscordInteractionsController : ControllerBase
             _logger.LogWarning(ex, "weepa-eventdetail handler failed");
             await _cmd.FollowUpTextAsync(
                 token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private async Task HandleEventsShuffleAsync(string token)
+    {
+        try
+        {
+            using var resp = await _admin.ShuffleScheduleAsync(default);
+            if (resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                await _cmd.FollowUpTextAsync(token, $"✅ キューをシャッフルしました\n```{body}```");
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                await _cmd.FollowUpTextAsync(
+                    token, $"❌ シャッフル失敗 ({(int)resp.StatusCode}): {body}",
+                    ephemeral: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "weepa-events-shuffle failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private async Task HandleEventsSchedulesAsync(string token)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+            var rows = (await conn.QueryAsync<dynamic>(
+                """
+                SELECT e.weepa_event_id, e.start_date, e.end_date, e.tallied_at,
+                       s.song, s.effect, s.submit_name
+                FROM weepa_events e
+                JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
+                WHERE e.start_date > NOW()
+                ORDER BY e.start_date ASC
+                LIMIT 20
+                """)).ToList();
+            if (rows.Count == 0)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token, "📅 開催スケジュールに登録されたイベントはありません");
+                return;
+            }
+            var sb = new StringBuilder();
+            sb.AppendLine("📅 **開催スケジュール (上位 20 件)**");
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var r = rows[i];
+                var s = ((DateTime)r.start_date).ToUniversalTime().AddHours(9).ToString("MM/dd HH:mm");
+                var e2 = ((DateTime)r.end_date).ToUniversalTime().AddHours(9).ToString("MM/dd HH:mm");
+                sb.AppendLine($"{i + 1}. `{s}~{e2}` {r.song} (`{r.effect}`) by {r.submit_name}");
+            }
+            await _cmd.FollowUpTextAsync(token, sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "weepa-events-schedules failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
         }
     }
 

@@ -134,6 +134,20 @@ public sealed class DiscordCommandClient
                     },
                 },
             },
+            new
+            {
+                name = "weepa-events-shuffle",
+                description = "未開催 (キュー) のイベント順をランダムに入れ替える",
+                type = 1,
+                default_member_permissions = "0",
+            },
+            new
+            {
+                name = "weepa-events-schedules",
+                description = "未開催の開催スケジュール (上位 20 件) を表示",
+                type = 1,
+                default_member_permissions = "0",
+            },
         };
 
         try

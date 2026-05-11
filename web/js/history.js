@@ -115,15 +115,11 @@ function renderUnheld(items) {
             .filter(isHeld)
             .sort((a, b) => new Date(b.eventStartDate) - new Date(a.eventStartDate));
 
-        // 未開催は「次回以降の開催順」が先、その後に「未承認/開催日未定」を投稿順で。
-        const unheldAll = items.filter((s) => !isHeld(s));
-        const scheduled = unheldAll
-            .filter((s) => s.eventStartDate)
-            .sort((a, b) => new Date(a.eventStartDate) - new Date(b.eventStartDate));
-        const undecided = unheldAll
-            .filter((s) => !s.eventStartDate)
+        // 未開催は単純に投稿順 (承認時にランダム位置に挿入されるので
+        // 開催順での並び替えは意味を持たない)。
+        const unheld = items
+            .filter((s) => !isHeld(s))
             .sort((a, b) => new Date(a.submitDate) - new Date(b.submitDate));
-        const unheld = [...scheduled, ...undecided];
 
         renderHeld(held, now);
         renderUnheld(unheld);
