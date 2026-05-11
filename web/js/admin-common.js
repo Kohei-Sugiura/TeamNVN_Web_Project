@@ -176,6 +176,17 @@ function ensureCommonConfirmDialog() {
     return dialog;
 }
 
+// datetime-local / date / time の input は、入力欄をクリックしただけでは
+// ピッカーが開かない (右端の小さなアイコンクリックが必要)。
+// showPicker() を呼んで「クリック = カレンダー展開」を実現する。
+document.addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (!(t instanceof HTMLInputElement)) return;
+    if (!['datetime-local', 'date', 'time'].includes(t.type)) return;
+    if (typeof t.showPicker !== 'function') return;
+    try { t.showPicker(); } catch { /* 未対応ブラウザ / focus 不足は無視 */ }
+});
+
 /**
  * native confirm() の置き換え。
  * @param {string} message 表示メッセージ

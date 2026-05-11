@@ -1579,6 +1579,24 @@ button.toggle-switch:disabled .toggle-slider {
 }
 
 /* ============================================
+ * datetime-local の calendar picker icon を白系に反転
+ * (ダークテーマだとデフォルトの黒アイコンが背景に同化して見えない)
+ * Chrome / Edge / Opera (Chromium) で有効。Firefox は独自描画なので影響なし。
+ * ============================================ */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
+  opacity: 0.75;
+  cursor: pointer;
+}
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+/* ============================================
  * MSC (ムンチャレ) イベント作成フォーム — 課題曲行
  * ============================================ */
 .msc-songs-list {
