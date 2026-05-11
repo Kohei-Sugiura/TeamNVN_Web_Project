@@ -35,3 +35,6 @@ uploads/
 
 # 一時バックアップ (deploy/setup-ssl.sh が default.conf.bak.<timestamp> を作る)
 *.bak.*
+
+# pg_dump バックアップ (本番データを含むので git に入れない)
+backup-*.sql
