@@ -148,6 +148,105 @@ public sealed class DiscordCommandClient
                 type = 1,
                 default_member_permissions = "0",
             },
+            new
+            {
+                name = "weepa-x-post",
+                description = "X 投稿用の課題曲告知テンプレートを生成",
+                type = 1,
+                default_member_permissions = "0",
+                options = new object[]
+                {
+                    new
+                    {
+                        name = "level",
+                        description = "レベル (例: 17)",
+                        type = 3, // STRING
+                        required = true,
+                    },
+                    new
+                    {
+                        name = "id",
+                        description = "weepa_event_id (省略時は現在開催中)",
+                        type = 4,
+                        required = false,
+                    },
+                },
+            },
+            new
+            {
+                name = "msc-result",
+                description = "MSC (ムンチャレ) イベントの集計結果ランキングを画像で投稿",
+                type = 1,
+                default_member_permissions = "0",
+                options = new object[]
+                {
+                    new
+                    {
+                        name = "id",
+                        description = "msc_event_id (省略時は直近開催)",
+                        type = 4,
+                        required = false,
+                    },
+                },
+            },
+            new
+            {
+                name = "msc-publish",
+                description = "MSC イベントを公開状態にする (tallied_at = NOW)",
+                type = 1,
+                default_member_permissions = "0",
+                options = new object[]
+                {
+                    new
+                    {
+                        name = "id",
+                        description = "msc_event_id (省略時は直近の未公開イベント)",
+                        type = 4,
+                        required = false,
+                    },
+                },
+            },
+            new
+            {
+                name = "msc-unpublish",
+                description = "MSC イベントを非公開に戻す (tallied_at = NULL)",
+                type = 1,
+                default_member_permissions = "0",
+                options = new object[]
+                {
+                    new
+                    {
+                        name = "id",
+                        description = "msc_event_id (必須)",
+                        type = 4,
+                        required = true,
+                    },
+                },
+            },
+            new
+            {
+                name = "msc-eventdetail",
+                description = "msc_event_id から MSC イベント詳細を表示",
+                type = 1,
+                default_member_permissions = "0",
+                options = new object[]
+                {
+                    new
+                    {
+                        name = "id",
+                        description = "msc_event_id",
+                        type = 4,
+                        required = true,
+                    },
+                },
+            },
+            new
+            {
+                name = "msc-events-schedules",
+                description = "MSC の開催予定 (start_date > NOW、上位 20 件) を表示",
+                type = 1,
+                default_member_permissions = "0",
+            },
         };
 
         try

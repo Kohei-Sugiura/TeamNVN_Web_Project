@@ -217,6 +217,71 @@ public class DiscordInteractionsController : ControllerBase
             return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
         }
 
+        if (name == "weepa-x-post")
+        {
+            var level = TryGetStringOption(data, "level");
+            if (string.IsNullOrWhiteSpace(level))
+            {
+                return Json(new
+                {
+                    type = RESP_CHANNEL_MESSAGE,
+                    data = new { content = "❌ level 引数が必要です", flags = FLAG_EPHEMERAL },
+                });
+            }
+            _ = Task.Run(() => HandleWeepaXPostAsync(token, idArg, level));
+            return Json(new
+            {
+                type = RESP_DEFERRED_CHANNEL_MESSAGE,
+                data = new { flags = FLAG_EPHEMERAL },
+            });
+        }
+
+        if (name == "msc-result")
+        {
+            _ = Task.Run(() => HandleMscResultAsync(token, idArg));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "msc-publish")
+        {
+            _ = Task.Run(() => HandleMscPublishAsync(token, idArg));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "msc-unpublish")
+        {
+            if (!idArg.HasValue)
+            {
+                return Json(new
+                {
+                    type = RESP_CHANNEL_MESSAGE,
+                    data = new { content = "❌ id 引数が必要です", flags = FLAG_EPHEMERAL },
+                });
+            }
+            _ = Task.Run(() => HandleMscUnpublishAsync(token, idArg.Value));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "msc-eventdetail")
+        {
+            if (!idArg.HasValue)
+            {
+                return Json(new
+                {
+                    type = RESP_CHANNEL_MESSAGE,
+                    data = new { content = "❌ id 引数が必要です", flags = FLAG_EPHEMERAL },
+                });
+            }
+            _ = Task.Run(() => HandleMscEventDetailAsync(token, idArg.Value));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "msc-events-schedules")
+        {
+            _ = Task.Run(() => HandleMscEventsSchedulesAsync(token));
+            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
         return Json(new
         {
             type = RESP_CHANNEL_MESSAGE,
@@ -237,6 +302,91 @@ public class DiscordInteractionsController : ControllerBase
             }
         }
         return null;
+    }
+
+    private static string? TryGetStringOption(JsonElement data, string optionName)
+    {
+        if (!data.TryGetProperty("options", out var opts)) return null;
+        foreach (var opt in opts.EnumerateArray())
+        {
+            if (opt.GetProperty("name").GetString() == optionName &&
+                opt.TryGetProperty("value", out var v) &&
+                v.ValueKind == JsonValueKind.String)
+            {
+                return v.GetString();
+            }
+        }
+        return null;
+    }
+
+    private static readonly string[] JapaneseDayNames = { "日", "月", "火", "水", "木", "金", "土" };
+
+    private async Task HandleWeepaXPostAsync(string token, int? eventId, string level)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+            var row = await conn.QuerySingleOrDefaultAsync<dynamic>(
+                eventId.HasValue
+                    ? """
+                      SELECT e.weepa_event_id, e.end_date, s.song, s.effect,
+                             s.submit_name, s.submit_reason
+                      FROM weepa_events e
+                      JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
+                      WHERE e.weepa_event_id = @Id
+                      """
+                    : """
+                      SELECT e.weepa_event_id, e.end_date, s.song, s.effect,
+                             s.submit_name, s.submit_reason
+                      FROM weepa_events e
+                      JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
+                      WHERE e.start_date > NOW()
+                      ORDER BY e.start_date ASC
+                      LIMIT 1
+                      """,
+                new { Id = eventId ?? 0 });
+            if (row is null)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token,
+                    eventId.HasValue
+                        ? $"❌ event_id {eventId} は存在しません"
+                        : "❌ 次回開催のイベントがありません",
+                    ephemeral: true);
+                return;
+            }
+
+            var endJst = ((DateTime)row.end_date).ToUniversalTime().AddHours(9);
+            var dayName = JapaneseDayNames[(int)endJst.DayOfWeek];
+            var endStr = $"{endJst.Year}/{endJst.Month}/{endJst.Day}({dayName}) {endJst.Hour:D2}:{endJst.Minute:D2}";
+            var reason = string.IsNullOrWhiteSpace((string?)row.submit_reason)
+                ? "(未設定)"
+                : (string)row.submit_reason;
+
+            var template = $$"""
+                【#WeePA】
+
+                今週の課題曲はこちら！
+
+                ・{{row.song}}
+                　┗{{row.effect}}･･･LV{{level}}
+
+                Selected by {{row.submit_name}}
+                選曲理由：{{reason}}
+
+                ↓提出はこちら↓
+                https://team-nvn-server.com/weepa/score/
+
+                提出期限：{{endStr}}まで
+                """;
+
+            await _cmd.FollowUpTextAsync(token, template, ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "weepa-x-post handler failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
     }
 
     private async Task HandleWeepaResultAsync(string token, int? eventId)
@@ -576,6 +726,262 @@ public class DiscordInteractionsController : ControllerBase
         }
     }
 
+    // ============================================
+    // MSC (MoonShotChallenge) handlers
+    // ============================================
+
+    private async Task HandleMscResultAsync(string token, int? eventId)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+            int targetId;
+            string label;
+            if (eventId.HasValue)
+            {
+                var exists = await conn.ExecuteScalarAsync<int?>(
+                    "SELECT msc_event_id FROM msc_events WHERE msc_event_id = @Id",
+                    new { Id = eventId.Value });
+                if (exists is null)
+                {
+                    await _cmd.FollowUpTextAsync(
+                        token, $"❌ msc_event_id {eventId.Value} は存在しません", ephemeral: true);
+                    return;
+                }
+                targetId = eventId.Value;
+                label = $"event #{targetId}";
+            }
+            else
+            {
+                var latest = await conn.QuerySingleOrDefaultAsync<int?>(
+                    """
+                    SELECT msc_event_id FROM msc_events
+                    WHERE start_date <= NOW()
+                    ORDER BY start_date DESC
+                    LIMIT 1
+                    """);
+                if (latest is null)
+                {
+                    await _cmd.FollowUpTextAsync(
+                        token, "❌ まだ開催された MSC イベントがありません", ephemeral: true);
+                    return;
+                }
+                targetId = latest.Value;
+                label = $"直近開催 (event #{targetId})";
+            }
+
+            var png = await _shot.CaptureMscRankingAsync(targetId);
+            await _cmd.FollowUpWithImageAsync(
+                token, $"🌙 MSC 集計結果 ({label})", png, $"msc-result-{targetId}.png");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "msc-result handler failed");
+            await _cmd.FollowUpTextAsync(
+                token, $"❌ 画像生成中にエラーが発生しました: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private async Task HandleMscPublishAsync(string token, int? eventId)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+            int targetId;
+            if (eventId.HasValue)
+            {
+                var exists = await conn.ExecuteScalarAsync<int?>(
+                    "SELECT msc_event_id FROM msc_events WHERE msc_event_id = @Id",
+                    new { Id = eventId.Value });
+                if (exists is null)
+                {
+                    await _cmd.FollowUpTextAsync(
+                        token, $"❌ msc_event_id {eventId.Value} は存在しません", ephemeral: true);
+                    return;
+                }
+                targetId = eventId.Value;
+            }
+            else
+            {
+                var latest = await conn.QuerySingleOrDefaultAsync<int?>(
+                    """
+                    SELECT msc_event_id FROM msc_events
+                    WHERE end_date < NOW() AND tallied_at IS NULL
+                    ORDER BY end_date DESC
+                    LIMIT 1
+                    """);
+                if (latest is null)
+                {
+                    await _cmd.FollowUpTextAsync(
+                        token, "❌ 公開対象の MSC イベント (終了済かつ未公開) がありません", ephemeral: true);
+                    return;
+                }
+                targetId = latest.Value;
+            }
+
+            using var resp = await _admin.PublishMscEventAsync(targetId, default);
+            if (resp.IsSuccessStatusCode)
+            {
+                await _cmd.FollowUpTextAsync(token, $"✅ MSC event #{targetId} を公開しました");
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                await _cmd.FollowUpTextAsync(
+                    token, $"❌ 公開失敗 ({(int)resp.StatusCode}): {body}", ephemeral: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "msc-publish handler failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private async Task HandleMscUnpublishAsync(string token, int eventId)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+            var exists = await conn.ExecuteScalarAsync<int?>(
+                "SELECT msc_event_id FROM msc_events WHERE msc_event_id = @Id",
+                new { Id = eventId });
+            if (exists is null)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token, $"❌ msc_event_id {eventId} は存在しません", ephemeral: true);
+                return;
+            }
+
+            using var resp = await _admin.UnpublishMscEventAsync(eventId, default);
+            if (resp.IsSuccessStatusCode)
+            {
+                await _cmd.FollowUpTextAsync(token, $"✅ MSC event #{eventId} を非公開に戻しました");
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                await _cmd.FollowUpTextAsync(
+                    token, $"❌ 非公開化失敗 ({(int)resp.StatusCode}): {body}", ephemeral: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "msc-unpublish handler failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private async Task HandleMscEventDetailAsync(string token, int eventId)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+            var ev = await conn.QuerySingleOrDefaultAsync<dynamic>(
+                """
+                SELECT e.msc_event_id, e.title, e.description, e.start_date, e.end_date,
+                       e.tallied_at,
+                       (SELECT COUNT(*) FROM msc_submissions s
+                        WHERE s.msc_event_id = e.msc_event_id) AS subs_total,
+                       (SELECT COUNT(*) FROM msc_submissions s
+                        WHERE s.msc_event_id = e.msc_event_id AND s.approval_status = 1) AS subs_approved,
+                       (SELECT COUNT(*) FROM msc_submissions s
+                        WHERE s.msc_event_id = e.msc_event_id AND s.approval_status = 0) AS subs_pending
+                FROM msc_events e
+                WHERE e.msc_event_id = @Id
+                """,
+                new { Id = eventId });
+            if (ev is null)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token, $"❌ msc_event_id {eventId} は存在しません", ephemeral: true);
+                return;
+            }
+            var songs = (await conn.QueryAsync<dynamic>(
+                """
+                SELECT song_order, song, effect
+                FROM msc_songs WHERE msc_event_id = @Id ORDER BY song_order
+                """,
+                new { Id = eventId })).ToList();
+
+            var nowUtc = DateTime.UtcNow;
+            var startUtc = ((DateTime)ev.start_date).ToUniversalTime();
+            var endUtc = ((DateTime)ev.end_date).ToUniversalTime();
+            var talliedAtNullable = (DateTime?)ev.tallied_at;
+            string state;
+            if (nowUtc < startUtc) state = "🕒 開催前";
+            else if (nowUtc < endUtc) state = "🟢 開催中";
+            else if (talliedAtNullable is null) state = "⏳ 集計中 (未公開)";
+            else state = "✅ 公開済";
+
+            var startJst = startUtc.AddHours(9).ToString("yyyy-MM-dd HH:mm");
+            var endJst = endUtc.AddHours(9).ToString("yyyy-MM-dd HH:mm");
+            var talliedJst = talliedAtNullable.HasValue
+                ? talliedAtNullable.Value.ToUniversalTime().AddHours(9).ToString("yyyy-MM-dd HH:mm") + " JST"
+                : "(未公開)";
+
+            var songsLine = string.Join("\n",
+                songs.Select(s => $"  {s.song_order}. {s.song} (`{s.effect}`)"));
+            if (string.IsNullOrEmpty(songsLine)) songsLine = "  (曲未設定)";
+
+            var description = string.IsNullOrWhiteSpace((string?)ev.description)
+                ? "(なし)" : (string)ev.description;
+
+            var msg = $"""
+                🌙 **MSC イベント #{eventId}** {ev.title}
+                開催期間: {startJst} ~ {endJst} JST
+                状態: {state}
+                集計: {talliedJst}
+                説明: {description}
+                課題曲:
+                {songsLine}
+                投稿: {ev.subs_approved} 承認済 / {ev.subs_pending} 未承認 / 計 {ev.subs_total} 件
+                """;
+            await _cmd.FollowUpTextAsync(token, msg);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "msc-eventdetail handler failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private async Task HandleMscEventsSchedulesAsync(string token)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync();
+            var rows = (await conn.QueryAsync<dynamic>(
+                """
+                SELECT msc_event_id, title, start_date, end_date, tallied_at
+                FROM msc_events
+                WHERE start_date > NOW()
+                ORDER BY start_date ASC
+                LIMIT 20
+                """)).ToList();
+            if (rows.Count == 0)
+            {
+                await _cmd.FollowUpTextAsync(token, "🌙 開催予定の MSC イベントはありません");
+                return;
+            }
+            var sb = new StringBuilder();
+            sb.AppendLine("🌙 **MSC 開催予定 (上位 20 件)**");
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var r = rows[i];
+                var s = ((DateTime)r.start_date).ToUniversalTime().AddHours(9).ToString("MM/dd HH:mm");
+                var e2 = ((DateTime)r.end_date).ToUniversalTime().AddHours(9).ToString("MM/dd HH:mm");
+                sb.AppendLine($"{i + 1}. `{s}~{e2}` #{r.msc_event_id} {r.title}");
+            }
+            await _cmd.FollowUpTextAsync(token, sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "msc-events-schedules failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
     private async Task<IActionResult> HandleComponentAsync(
         JsonElement root, CancellationToken ct)
     {
@@ -597,6 +1003,14 @@ public class DiscordInteractionsController : ControllerBase
         {
             var xId = parts[3];
             return await HandleScoreComponentAsync(root, op, eventId, xId, submitId, ct);
+        }
+
+        if (domain == "mscscore" && parts.Length >= 5 &&
+            int.TryParse(parts[2], out var mscEventId) &&
+            int.TryParse(parts[4], out var mscSubmitId))
+        {
+            var xId = parts[3];
+            return await HandleMscScoreComponentAsync(root, op, mscEventId, xId, mscSubmitId, ct);
         }
 
         return InvalidComponent("未知の custom_id");
@@ -695,11 +1109,107 @@ public class DiscordInteractionsController : ControllerBase
         return InvalidComponent("未知の score op");
     }
 
+    private async Task<IActionResult> HandleMscScoreComponentAsync(
+        JsonElement root, string op,
+        int eventId, string xId, int submitId,
+        CancellationToken ct)
+    {
+        if (op == "approve")
+        {
+            var resp = await _admin.ApproveMscSubmissionAsync(eventId, xId, submitId, null, ct);
+            return await BuildUpdateMessageResponseAsync(
+                root, resp, "✅ 承認", ExtractActorName(root), ct);
+        }
+        if (op == "reject")
+        {
+            var resp = await _admin.RejectMscSubmissionAsync(eventId, xId, submitId, ct);
+            return await BuildUpdateMessageResponseAsync(
+                root, resp, "❌ 却下", ExtractActorName(root), ct);
+        }
+        if (op == "edit")
+        {
+            // 提出中の plays を取得して、その分だけテキスト入力をモーダルに並べる
+            var plays = await LoadMscSubmissionPlaysAsync(eventId, xId, submitId, ct);
+            if (plays.Count == 0)
+            {
+                return EphemeralMessage("対象の提出が見つかりません");
+            }
+            var components = new List<object>();
+            foreach (var p in plays.OrderBy(p => p.PlayOrder))
+            {
+                var label = p.PlayOrder == 4
+                    ? $"EX Track ({p.Song})"
+                    : $"{p.PlayOrder}{(p.PlayOrder == 1 ? "st" : p.PlayOrder == 2 ? "nd" : "rd")} Track ({p.Song})";
+                // Discord の text input label は 45 文字制限
+                if (label.Length > 45) label = label.Substring(0, 44) + "…";
+                components.Add(new
+                {
+                    type = COMP_ACTION_ROW,
+                    components = new object[]
+                    {
+                        new
+                        {
+                            type = COMP_TEXT_INPUT,
+                            custom_id = $"play{p.PlayOrder}",
+                            label,
+                            style = TEXT_INPUT_SHORT,
+                            min_length = 1,
+                            max_length = 8,
+                            required = true,
+                            value = p.Score.ToString(),
+                        },
+                    },
+                });
+            }
+            return Json(new
+            {
+                type = RESP_MODAL,
+                data = new
+                {
+                    custom_id = $"mscscore:editsubmit:{eventId}:{xId}:{submitId}",
+                    title = "MSC スコア修正承認",
+                    components,
+                },
+            });
+        }
+        return InvalidComponent("未知の mscscore op");
+    }
+
+    private async Task<List<(int PlayOrder, int Score, string Song)>> LoadMscSubmissionPlaysAsync(
+        int eventId, string xId, int submitId, CancellationToken ct)
+    {
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var rows = (await conn.QueryAsync<(int PlayOrder, int Score, string Song)>(
+            new CommandDefinition(
+                """
+                SELECT sc.play_order AS "PlayOrder",
+                       sc.score      AS "Score",
+                       so.song       AS "Song"
+                FROM msc_scores sc
+                JOIN msc_songs so
+                  ON so.msc_event_id = sc.msc_event_id
+                 AND so.song_order   = sc.song_order
+                WHERE sc.msc_event_id = @EventId
+                  AND sc.x_id         = @XId
+                  AND sc.submit_id    = @SubmitId
+                ORDER BY sc.play_order
+                """,
+                new { EventId = eventId, XId = xId, SubmitId = submitId },
+                cancellationToken: ct))).ToList();
+        return rows;
+    }
+
     private async Task<IActionResult> HandleModalAsync(
         JsonElement root, CancellationToken ct)
     {
         var customId = root.GetProperty("data").GetProperty("custom_id").GetString() ?? "";
         var parts = customId.Split(':');
+
+        if (parts.Length == 5 && parts[0] == "mscscore" && parts[1] == "editsubmit")
+        {
+            return await HandleMscScoreEditModalAsync(root, parts, ct);
+        }
+
         if (parts.Length != 5 || parts[0] != "score" || parts[1] != "editsubmit")
         {
             return EphemeralMessage("未対応のモーダル");
@@ -732,6 +1242,43 @@ public class DiscordInteractionsController : ControllerBase
         var actor = ExtractActorName(root);
         return await BuildUpdateMessageResponseAsync(
             root, resp, $"✅ 承認 (修正: {score}{(exScore.HasValue ? $" / EX {exScore}" : "")})", actor, ct);
+    }
+
+    private async Task<IActionResult> HandleMscScoreEditModalAsync(
+        JsonElement root, string[] parts, CancellationToken ct)
+    {
+        if (!int.TryParse(parts[2], out var eventId) ||
+            !int.TryParse(parts[4], out var submitId))
+        {
+            return EphemeralMessage("モーダルパラメータ不正");
+        }
+        var xId = parts[3];
+
+        var inputs = ParseModalInputs(root);
+        var corrections = new List<(int PlayOrder, int Score)>();
+        for (int i = 1; i <= 4; i++)
+        {
+            if (!inputs.TryGetValue($"play{i}", out var s) || string.IsNullOrWhiteSpace(s)) continue;
+            if (!int.TryParse(s, out var v))
+            {
+                return EphemeralMessage($"Track {i} のスコアを整数で入力してください");
+            }
+            if (v < 0 || v > 10_000_000)
+            {
+                return EphemeralMessage($"Track {i} のスコアは 0〜10,000,000 の範囲です");
+            }
+            corrections.Add((i, v));
+        }
+        if (corrections.Count == 0)
+        {
+            return EphemeralMessage("スコアが 1 件も入力されていません");
+        }
+
+        var resp = await _admin.ApproveMscSubmissionAsync(eventId, xId, submitId, corrections, ct);
+        var actor = ExtractActorName(root);
+        var summary = string.Join(", ", corrections.Select(c => $"T{c.PlayOrder}={c.Score:N0}"));
+        return await BuildUpdateMessageResponseAsync(
+            root, resp, $"✅ 承認 (修正: {summary})", actor, ct);
     }
 
     private static Dictionary<string, string> ParseModalInputs(JsonElement root)

@@ -68,4 +68,35 @@ public sealed class WeepaAdminClient
 
     public Task<HttpResponseMessage> ShuffleScheduleAsync(CancellationToken ct) =>
         _http.PostAsync("/api/admin/schedule/shuffle", null, ct);
+
+    // ============================================
+    // MSC (MoonShotChallenge) loopback
+    // ============================================
+
+    public Task<HttpResponseMessage> PublishMscEventAsync(int id, CancellationToken ct) =>
+        _http.PostAsync($"/api/admin/msc/events/{id}/publish", null, ct);
+
+    public Task<HttpResponseMessage> UnpublishMscEventAsync(int id, CancellationToken ct) =>
+        _http.PostAsync($"/api/admin/msc/events/{id}/unpublish", null, ct);
+
+    public Task<HttpResponseMessage> ApproveMscSubmissionAsync(
+        int eventId,
+        string xId,
+        int submitId,
+        IReadOnlyList<(int PlayOrder, int Score)>? plays,
+        CancellationToken ct)
+    {
+        object body = plays is { Count: > 0 }
+            ? new { plays = plays.Select(p => new { playOrder = p.PlayOrder, score = p.Score }).ToArray() }
+            : new { };
+        return _http.PostAsJsonAsync(
+            $"/api/admin/msc/submissions/{eventId}/{Uri.EscapeDataString(xId)}/{submitId}/approve",
+            body, ct);
+    }
+
+    public Task<HttpResponseMessage> RejectMscSubmissionAsync(
+        int eventId, string xId, int submitId, CancellationToken ct) =>
+        _http.PostAsync(
+            $"/api/admin/msc/submissions/{eventId}/{Uri.EscapeDataString(xId)}/{submitId}/reject",
+            null, ct);
 }

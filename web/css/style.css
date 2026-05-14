@@ -74,7 +74,11 @@ a:hover {
 }
 
 .container {
-  max-width: 760px;
+  /* テキストは 760px で読みやすく保ちつつ、ランキング表など中身が広い時は
+     その幅まで自動で伸びる (shrink-to-fit 動作)。viewport 上限は 100%。 */
+  width: fit-content;
+  min-width: min(760px, 100%);
+  max-width: 100%;
   margin: 0 auto;
   padding: 40px 20px 60px;
   position: relative;
@@ -1376,8 +1380,25 @@ button.toggle-switch:disabled .toggle-slider {
 }
 
 .db-table-wrap {
+  /* 中身のテーブル幅まで広がるが、viewport は超えない (はみ出る時は内部スクロール)。
+     親 .container が fit-content なので、ここが伸びた分だけコンテナも横に広がる。 */
+  width: max-content;
+  max-width: 100%;
   overflow-x: auto;
-  width: 100%;
+}
+
+/* Discord などへのスクショ専用モード (RankingScreenshot が body にこのクラスを付与)。
+   コンテナと表ラッパの viewport キャップ + 内部スクロールを解除し、内容全幅で
+   レンダリングさせる。Chromium 側の viewport を十分広くしてキャプチャする想定。 */
+body.screenshot-mode .container {
+  width: max-content;
+  min-width: 760px;
+  max-width: none;
+}
+body.screenshot-mode .db-table-wrap {
+  width: max-content;
+  max-width: none;
+  overflow-x: visible;
 }
 
 .db-table {

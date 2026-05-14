@@ -4,6 +4,7 @@ using Npgsql;
 using System.Text.Json;
 using Weepa.Api.Models.Requests;
 using Weepa.Api.Models.Responses;
+using Weepa.Api.Services;
 using Weepa.Api.Validation;
 
 namespace Weepa.Api.Controllers;
@@ -32,11 +33,16 @@ public class MscController : ControllerBase
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<MscController> _logger;
+    private readonly IDiscordNotifier _discord;
 
-    public MscController(NpgsqlDataSource dataSource, ILogger<MscController> logger)
+    public MscController(
+        NpgsqlDataSource dataSource,
+        ILogger<MscController> logger,
+        IDiscordNotifier discord)
     {
         _dataSource = dataSource;
         _logger = logger;
+        _discord = discord;
     }
 
     [HttpGet("events/{id:int}")]
@@ -583,6 +589,55 @@ public class MscController : ControllerBase
         }
 
         await tx.CommitAsync(ct);
+
+        // Discord 通知 (fire-and-forget)。失敗してもユーザー応答には影響させない
+        try
+        {
+            var eventTitle = await conn.ExecuteScalarAsync<string>(new CommandDefinition(
+                "SELECT title FROM msc_events WHERE msc_event_id = @Id",
+                new { Id = eventId }, cancellationToken: ct)) ?? string.Empty;
+
+            var songRows = (await conn.QueryAsync<(int SongOrder, string Song, string Effect)>(
+                new CommandDefinition(
+                    """
+                    SELECT song_order AS "SongOrder",
+                           song       AS "Song",
+                           effect     AS "Effect"
+                    FROM msc_songs
+                    WHERE msc_event_id = @Id
+                    """,
+                    new { Id = eventId }, cancellationToken: ct))).ToList();
+            var songMap = songRows.ToDictionary(s => s.SongOrder);
+
+            var playSummaries = plays
+                .Select(p =>
+                {
+                    var info = songMap.TryGetValue(p.SongOrder, out var hit)
+                        ? hit : (SongOrder: p.SongOrder, Song: "?", Effect: "?");
+                    return new MscPlaySummary(p.PlayOrder, p.SongOrder, p.Score, info.Song, info.Effect);
+                })
+                .ToList();
+            var total = plays.GroupBy(p => p.SongOrder).Sum(g => g.Max(p => p.Score));
+
+            var imageRefs = imagesByPlayOrder
+                .OrderBy(kv => kv.Key)
+                .Select(kv =>
+                {
+                    var fileName = $"play{kv.Key}.{kv.Value.Ext}";
+                    var path = Path.Combine(UploadsRoot, eventId.ToString(), submitId.ToString(), fileName);
+                    return new MscSubmissionImageRef(kv.Key, path, kv.Value.File.ContentType);
+                })
+                .ToList();
+
+            _ = _discord.NotifyMscScoreSubmittedAsync(new MscScoreSubmittedNotification(
+                eventId, submitId, normalizedXId, request.SubmitName, request.Platform,
+                eventTitle, playSummaries, total, imageRefs));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "MSC discord notify dispatch failed");
+        }
+
         return Ok(new { message = "ok", submitId });
     }
 }

@@ -47,21 +47,30 @@ public sealed class RankingScreenshot : IAsyncDisposable
         }
     }
 
-    public async Task<byte[]> CaptureRankingAsync(int eventId, CancellationToken ct = default)
+    public Task<byte[]> CaptureRankingAsync(int eventId, CancellationToken ct = default) =>
+        CaptureAsync($"/weepa/ranking/?eventId={eventId}", ct);
+
+    public Task<byte[]> CaptureMscRankingAsync(int eventId, CancellationToken ct = default) =>
+        CaptureAsync($"/msc/ranking/?eventId={eventId}", ct);
+
+    private async Task<byte[]> CaptureAsync(string path, CancellationToken ct)
     {
         var browser = await GetBrowserAsync();
         var page = await browser.NewPageAsync();
         try
         {
+            // MSC ランキングは曲数によって幅が変わるので余裕を持って広めに。
+            // .screenshot-mode で width: max-content にすると、コンテナは内容に
+            // ぴったり収まるサイズで描画される (viewport は上限としてだけ機能)。
             await page.SetViewportAsync(new ViewPortOptions
             {
-                Width = 900,
+                Width = 2200,
                 Height = 1200,
                 DeviceScaleFactor = 2,
             });
 
             // 内部用 nginx ポート (HTTPS リダイレクトせず、認証無し)
-            var url = $"http://nginx:8081/weepa/ranking/?eventId={eventId}";
+            var url = $"http://nginx:8081{path}";
             await page.GoToAsync(url, new NavigationOptions
             {
                 WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
@@ -77,6 +86,10 @@ public sealed class RankingScreenshot : IAsyncDisposable
 
             // Web フォントがロードされるまで少し待つ
             await page.EvaluateExpressionAsync("document.fonts && document.fonts.ready");
+
+            // viewport 制約を外してコンテナを内容ぴったりに広げる
+            await page.EvaluateExpressionAsync(
+                "document.body.classList.add('screenshot-mode')");
 
             // .container 全体をキャプチャ。要素スクショなので viewport 高さを超える
             // 縦長エントリでも element の bounding box まで自動で伸びる。
