@@ -57,6 +57,15 @@
       </div>
 
       <div class="field">
+        <label for="image">リザルト画像 <span class="required">*</span></label>
+        <input type="file" id="image" name="image" required accept="image/jpeg,image/png,image/webp,image/*">
+        <p class="hint">JPEG / PNG / WebP、最大 20 MB（スマホで撮影したリザルト画像を添付）</p>
+        <p class="hint">画像を選択するとスコアと EX スコアを自動で読み取って下の欄に入力します。誤っていれば手動で修正してください。</p>
+        <p id="recognize-status" class="result" role="status" aria-live="polite"></p>
+        <p class="error" data-for="image"></p>
+      </div>
+
+      <div class="field">
         <label for="score">スコア <span class="required">*</span></label>
         <input type="number" id="score" name="score" required min="0" max="10000000" step="1" inputmode="numeric">
         <p class="hint">0 〜 10,000,000</p>
@@ -70,17 +79,18 @@
         <p class="error" data-for="exScore"></p>
       </div>
 
-      <div class="field">
-        <label for="image">リザルト画像 <span class="required">*</span></label>
-        <input type="file" id="image" name="image" required accept="image/jpeg,image/png,image/webp,image/*">
-        <p class="hint">JPEG / PNG / WebP、最大 20 MB（スマホで撮影したリザルト画像を添付）</p>
-        <p class="error" data-for="image"></p>
-      </div>
-
       <div class="form-actions">
         <button type="submit" id="submit-btn">スコアを投稿する</button>
       </div>
     </form>
+
+    <dialog id="recognize-dialog" class="recognize-dialog">
+      <div class="dialog-body">
+        <div class="recognize-spinner" aria-hidden="true"></div>
+        <p>画像を認識中...</p>
+        <p class="hint">数秒お待ちください</p>
+      </div>
+    </dialog>
 
     <dialog id="confirm-dialog" class="confirm-dialog">
       <h3>投稿内容の確認</h3>

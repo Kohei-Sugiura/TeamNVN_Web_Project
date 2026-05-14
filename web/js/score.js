@@ -240,6 +240,111 @@ async function actuallySubmit(snap) {
   }
 }
 
+// 画像選択 → Claude API で SCORE / EX SCORE を自動読み取りして入力欄にセット。
+// 失敗は手入力にフォールバックさせるだけで、フォーム送信は阻害しない。
+const recognizeStatusEl = document.getElementById('recognize-status');
+function setRecognizeStatus(text, kind) {
+  if (!recognizeStatusEl) return;
+  recognizeStatusEl.textContent = text;
+  recognizeStatusEl.className = `result ${kind || ''}`.trim();
+}
+
+// Anthropic vision API は base64 で 5MB 制限。スマホ撮影 (10MB 超) はそのままだと
+// 拒否されるので、長辺 1600px / JPEG quality 0.85 に縮小して送る (認識精度は十分)。
+// 元画像はそのまま投稿用に保持 → スコア投稿側はオリジナルが送られる。
+async function shrinkImageForRecognize(file) {
+  const MAX_DIM = 1600;
+  const QUALITY = 0.85;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+      im.src = url;
+    });
+    const ratio = Math.min(1, MAX_DIM / Math.max(img.naturalWidth, img.naturalHeight));
+    if (ratio === 1 && file.size <= 4 * 1024 * 1024) {
+      // 元画像が 4MB 以下かつ縮小不要 → そのまま送る (再エンコードコストを避ける)
+      return file;
+    }
+    const w = Math.round(img.naturalWidth * ratio);
+    const h = Math.round(img.naturalHeight * ratio);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', QUALITY));
+    if (!blob) return file;
+    return new File([blob], 'recognize.jpg', { type: 'image/jpeg' });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+const recognizeDialog = document.getElementById('recognize-dialog');
+
+async function recognizeFromImage(file) {
+  setRecognizeStatus('', '');
+  if (recognizeDialog && typeof recognizeDialog.showModal === 'function') {
+    try { recognizeDialog.showModal(); } catch { /* ignore */ }
+  }
+  let toSend;
+  try {
+    toSend = await shrinkImageForRecognize(file);
+  } catch (err) {
+    recognizeDialog?.close();
+    setRecognizeStatus(`画像の事前処理に失敗: ${err.message}`, 'ng');
+    return;
+  }
+  const fd = new FormData();
+  fd.append('image', toSend);
+  try {
+    const res = await fetch('/api/score/recognize', { method: 'POST', body: fd });
+    if (res.status === 429) {
+      setRecognizeStatus('画像認識のリクエストが集中しています。少し時間をおいてから再度お試しください。', 'ng');
+      return;
+    }
+    if (res.status === 503) {
+      // API キー未設定 / 機能無効 → そっと黙る (手入力のみで運用)
+      setRecognizeStatus('', '');
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      setRecognizeStatus(
+        `自動入力に失敗しました: ${data.error || `HTTP ${res.status}`}。手入力してください。`,
+        'ng');
+      return;
+    }
+    let filled = [];
+    if (data.score != null) {
+      form.score.value = data.score;
+      filled.push(`SCORE = ${Number(data.score).toLocaleString('en-US')}`);
+    }
+    if (data.exScore != null) {
+      form.exScore.value = data.exScore;
+      filled.push(`EX = ${Number(data.exScore).toLocaleString('en-US')}`);
+    }
+    if (filled.length) {
+      setRecognizeStatus(`✓ 自動入力しました (${filled.join(' / ')})。値を確認してください。`, 'ok');
+    } else {
+      setRecognizeStatus(
+        '画像からスコアを読み取れませんでした。手入力してください。', 'ng');
+    }
+  } catch (err) {
+    setRecognizeStatus(`通信エラー: ${err.message}`, 'ng');
+  } finally {
+    recognizeDialog?.close();
+  }
+}
+
+form.image.addEventListener('change', () => {
+  const f = form.image.files[0];
+  if (!f) { setRecognizeStatus('', ''); return; }
+  recognizeFromImage(f);
+});
+
 form.addEventListener('submit', (ev) => {
   ev.preventDefault();
   clearErrors();

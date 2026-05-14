@@ -26,6 +26,7 @@ services:
       DISCORD_NOTIFY_CHANNEL_ID: ${DISCORD_NOTIFY_CHANNEL_ID:-}
       DISCORD_PUBLIC_KEY: ${DISCORD_PUBLIC_KEY:-}
       DISCORD_APP_ID: ${DISCORD_APP_ID:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - uploads:/app/uploads
     networks:

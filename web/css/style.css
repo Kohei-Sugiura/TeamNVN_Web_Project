@@ -990,6 +990,46 @@ dialog.confirm-dialog {
   box-shadow: 0 0 28px rgba(0, 229, 255, 0.35);
 }
 
+/* 認識中ローディングダイアログ */
+dialog.recognize-dialog {
+  padding: 0;
+  border: 1px solid rgba(0, 229, 255, 0.6);
+  border-radius: 10px;
+  background: rgba(20, 20, 42, 0.96);
+  color: #eaeaf0;
+  width: 90vw;
+  max-width: 320px;
+  box-shadow: 0 0 28px rgba(0, 229, 255, 0.35);
+  text-align: center;
+}
+dialog.recognize-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+}
+dialog.recognize-dialog .dialog-body {
+  padding: 24px 20px 20px;
+}
+dialog.recognize-dialog .dialog-body p {
+  margin: 6px 0;
+}
+dialog.recognize-dialog .dialog-body p:first-of-type {
+  font-size: 1rem;
+  color: #00e5ff;
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
+}
+.recognize-spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 14px;
+  border: 3px solid rgba(0, 229, 255, 0.25);
+  border-top-color: #00e5ff;
+  border-radius: 50%;
+  animation: recognize-spin 0.8s linear infinite;
+}
+@keyframes recognize-spin {
+  to { transform: rotate(360deg); }
+}
+
 dialog.confirm-dialog::backdrop {
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
