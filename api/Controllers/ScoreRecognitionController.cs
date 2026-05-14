@@ -35,7 +35,7 @@ public class ScoreRecognitionController : ControllerBase
     }
 
     [HttpPost("recognize")]
-    [EnableRateLimiting("recognize")]
+    [EnableRateLimiting("recognize-weepa")]
     [RequestSizeLimit(MaxImageBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxImageBytes)]
     public async Task<IActionResult> Recognize(

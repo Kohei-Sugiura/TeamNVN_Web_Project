@@ -23,26 +23,34 @@ builder.Services.AddSingleton<DiscordCommandClient>();
 builder.Services.AddSingleton<RankingScreenshot>();
 builder.Services.AddSingleton<ClaudeImageRecognitionService>();
 
-// 画像認識 API のレート制限: IP ごとに 1 分 10 リクエスト。
-// nginx 経由のため X-Forwarded-For 末尾を見る (リバプロから来る場合の対策)。
+// 画像認識 API のレート制限: WeePA / MSC で別バケット (IP × エンドポイント種別)、
+// 各 1 分 3 リクエスト。nginx 経由のため X-Forwarded-For 末尾を見る。
+static string GetClientIp(HttpContext ctx)
+{
+    return ctx.Request.Headers["X-Forwarded-For"].ToString()
+        .Split(',')
+        .Select(s => s.Trim())
+        .FirstOrDefault(s => !string.IsNullOrEmpty(s))
+        ?? ctx.Connection.RemoteIpAddress?.ToString()
+        ?? "unknown";
+}
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy("recognize", httpContext =>
+    foreach (var policy in new[] { "recognize-weepa", "recognize-msc" })
     {
-        var ip = httpContext.Request.Headers["X-Forwarded-For"].ToString()
-            .Split(',')
-            .Select(s => s.Trim())
-            .FirstOrDefault(s => !string.IsNullOrEmpty(s))
-            ?? httpContext.Connection.RemoteIpAddress?.ToString()
-            ?? "unknown";
-        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = 10,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0,
-        });
-    });
+        var key = policy;
+        options.AddPolicy(key, ctx =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                $"{key}:{GetClientIp(ctx)}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 3,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }));
+    }
 });
 
 var app = builder.Build();
