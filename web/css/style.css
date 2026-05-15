@@ -1087,6 +1087,17 @@ dialog.confirm-dialog .dialog-body img.preview {
   border-radius: 4px;
 }
 
+/* スコア投稿フォーム内のリザルト画像プレビュー */
+.image-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  margin: 10px 0;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 4px;
+  background: #0c0c1f;
+}
+
 dialog.confirm-dialog .dialog-actions {
   display: flex;
   gap: 12px;

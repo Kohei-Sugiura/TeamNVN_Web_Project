@@ -61,6 +61,7 @@
         <input type="file" id="image" name="image" required accept="image/jpeg,image/png,image/webp,image/*">
         <p class="hint">JPEG / PNG / WebP、最大 20 MB（スマホで撮影したリザルト画像を添付）</p>
         <p class="hint">画像を選択するとスコアと EX スコアを自動で読み取って下の欄に入力します。誤っていれば手動で修正してください。</p>
+        <img id="image-preview" class="image-preview" alt="" hidden>
         <p id="recognize-status" class="result" role="status" aria-live="polite"></p>
         <p class="error" data-for="image"></p>
       </div>

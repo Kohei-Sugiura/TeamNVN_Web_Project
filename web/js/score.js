@@ -217,6 +217,8 @@ async function actuallySubmit(snap) {
       saveUserProfile({ xId: snap.xId, submitName: snap.submitName });
       form.reset();
       prefillUserFields();
+      setPreview(null);
+      setRecognizeStatus('', '');
     } else if (res.status === 400) {
       const data = await res.json().catch(() => ({}));
       mapServerErrors(data.errors);
@@ -339,9 +341,32 @@ async function recognizeFromImage(file) {
   }
 }
 
+const previewEl = document.getElementById('image-preview');
+let previewObjectUrl = null;
+function setPreview(file) {
+  if (!previewEl) return;
+  if (previewObjectUrl) {
+    URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = null;
+  }
+  if (!file) {
+    previewEl.removeAttribute('src');
+    previewEl.hidden = true;
+    return;
+  }
+  previewObjectUrl = URL.createObjectURL(file);
+  previewEl.src = previewObjectUrl;
+  previewEl.hidden = false;
+}
+
 form.image.addEventListener('change', () => {
   const f = form.image.files[0];
-  if (!f) { setRecognizeStatus('', ''); return; }
+  if (!f) {
+    setPreview(null);
+    setRecognizeStatus('', '');
+    return;
+  }
+  setPreview(f);
   recognizeFromImage(f);
 });
 
