@@ -22,6 +22,8 @@ builder.Services.AddSingleton<WeepaAdminClient>();
 builder.Services.AddSingleton<DiscordCommandClient>();
 builder.Services.AddSingleton<RankingScreenshot>();
 builder.Services.AddSingleton<ClaudeImageRecognitionService>();
+builder.Services.AddSingleton<SdvxRoomService>();
+builder.Services.AddHostedService<SdvxRoomBackgroundService>();
 
 // 画像認識 API のレート制限: WeePA / MSC で別バケット (IP × エンドポイント種別)、
 // 各 1 分 3 リクエスト。nginx 経由のため X-Forwarded-For 末尾を見る。
