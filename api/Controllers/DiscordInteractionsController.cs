@@ -1124,9 +1124,15 @@ public class DiscordInteractionsController : ControllerBase
         if (op == "mode-select") return HandleMatchingCreateRoomSubmit(root);
         if (op == "join-room" && parts.Length >= 3 && int.TryParse(parts[2], out var jrn))
             return HandleMatchingJoinRoom(root, jrn);
-        // 退出 / プレー開始 ボタン (それぞれ確認 Modal を返す)
-        if (op == "room-leave") return HandleMatchingRoomLeave(root);
-        if (op == "play-start") return EphemeralMessage("Phase 3 で実装予定です");
+        // 退出 / プレー開始 / プレー終了 / モード変更 ボタン
+        if (op == "room-leave")    return HandleMatchingRoomLeave(root);
+        if (op == "play-start")    return HandleMatchingPlayStart(root);
+        if (op == "play-end")      return HandleMatchingPlayEnd(root);
+        if (op == "change-mode")   return HandleMatchingChangeModeOpen(root);
+        if (op == "split-room")    return EphemeralMessage("Phase 4 で実装予定です");
+        // 退出確認 ephemeral 内のボタン (プレー中の退出時のみ表示)
+        if (op == "confirm-leave") return HandleMatchingConfirmLeave(root);
+        if (op == "cancel")        return HandleMatchingCancel(root);
 
         // 重要: root (JsonElement) は parent の using var doc が解放されると無効になる。
         // Task.Run へ渡す前に必要な値を string / ulong で取り出しておく。
@@ -1177,7 +1183,7 @@ public class DiscordInteractionsController : ControllerBase
                 else        await _matching.RemoveWaitingUserAsync(userId);
 
                 // 管理メッセージ本体を debounce 経由で更新 (連続クリック対策)
-                RefreshManagerMessage();
+                _matching.RefreshDashboard();
             });
             // type=6: deferred update message。クリック loading は即消える + ephemeral message 出ない
             return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
@@ -1255,6 +1261,62 @@ public class DiscordInteractionsController : ControllerBase
     {
         var mode = ExtractModalSelectValue(root, "mode");
         return ProcessCreateRoomSubmission(root, mode, isModal: true);
+    }
+
+    // モード変更モーダル submit
+    private IActionResult HandleMatchingChangeModeSubmit(JsonElement root)
+    {
+        var modeValue = ExtractModalSelectValue(root, "mode");
+        var modeDisplay = MatchingModes.ToDisplay(modeValue);
+        if (modeDisplay is null) return EphemeralMessage("❌ 不正なモード");
+
+        var channelId = ExtractChannelId(root);
+        var room = _matching.GetRoomByChannelId(channelId);
+        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
+        if (room.Status != RoomStatus.Recruiting)
+            return EphemeralMessage("❌ プレー中はモード変更できません");
+
+        var oldMode = room.Mode;
+        if (oldMode == modeDisplay)
+        {
+            // 同じモードなら no-op (ephemeral で通知)
+            return Json(new
+            {
+                type = RESP_CHANNEL_MESSAGE,
+                data = new { flags = FLAG_EPHEMERAL, content = $"モードは既に {modeDisplay} です" },
+            });
+        }
+
+        var token = root.GetProperty("token").GetString() ?? "";
+        var roomNumber = room.Number;
+        var roomRoleId = room.RoleId;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _matching.UpdateRoomAsync(roomNumber, r => r.Mode = modeDisplay);
+                RefreshRoomAnchor(roomNumber);
+                _matching.RefreshDashboard();
+                // 部屋専用チャンネルに対象ロール mention でモード変更通知
+                await _cmd.CreateChannelMessageAsync(channelId, new
+                {
+                    content = $"<@&{roomRoleId}> モードが {oldMode} → {modeDisplay} に変更されました。",
+                    allowed_mentions = new { roles = new[] { roomRoleId.ToString() } },
+                });
+                // 確認 ephemeral を消す
+                await _cmd.DeleteOriginalInteractionResponseAsync(token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "change-mode failed");
+                await _cmd.FollowUpTextAsync(token, $"❌ モード変更エラー: {ex.Message}", ephemeral: true);
+            }
+        });
+        return Json(new
+        {
+            type = RESP_DEFERRED_CHANNEL_MESSAGE,
+            data = new { flags = FLAG_EPHEMERAL },
+        });
     }
 
 
@@ -1409,7 +1471,7 @@ public class DiscordInteractionsController : ControllerBase
             }
 
             // 6. 管理メッセージを更新 (Phase 1 メッセージ)
-            RefreshManagerMessage();
+            _matching.RefreshDashboard();
 
             // 7. 待機部屋チャンネルに通知 (ロール mention 付き)
             await PostMatchingNotificationAsync(
@@ -1473,12 +1535,12 @@ public class DiscordInteractionsController : ControllerBase
                             : _matching.BuildRoomAnchorPayload(latest);
                     });
             }
-            RefreshManagerMessage();
+            _matching.RefreshDashboard();
         });
         return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
     }
 
-    // 退出ボタン → 確認なしで即退出
+    // 退出ボタン: 募集中は即実行、プレー中は ephemeral で確認
     private IActionResult HandleMatchingRoomLeave(JsonElement root)
     {
         var channelId = ExtractChannelId(root);
@@ -1492,11 +1554,196 @@ public class DiscordInteractionsController : ControllerBase
         if (!room.MemberUserIds.Contains(userId))
             return EphemeralMessage("❌ あなたはこの部屋の入室者ではありません");
 
+        if (room.Status == RoomStatus.Playing)
+        {
+            // プレー中は確認 ephemeral を出す
+            return Json(new
+            {
+                type = RESP_CHANNEL_MESSAGE,
+                data = new
+                {
+                    flags = FLAG_EPHEMERAL,
+                    content = $"オンマチ{MatchingManagerService.NumberToCircle(room.Number)} はプレー中です。本当に退出しますか?",
+                    components = new object[]
+                    {
+                        new
+                        {
+                            type = 1,
+                            components = new object[]
+                            {
+                                new { type = 2, style = 4, label = "退出する",   custom_id = "matching:confirm-leave" },
+                                new { type = 2, style = 2, label = "キャンセル", custom_id = "matching:cancel" },
+                            },
+                        },
+                    },
+                },
+            });
+        }
+
+        // 募集中はそのまま退出
+        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
+        ulong.TryParse(roleIdStr, out var waitingRoleId);
+        _ = Task.Run(() => DoLeaveRoomAsync(token, guildId, userId, waitingRoleId, room.Number, autoEnd: false));
+        return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
+    }
+
+    // 確認 ephemeral の "退出する" → 実際の退出処理
+    private IActionResult HandleMatchingConfirmLeave(JsonElement root)
+    {
+        var channelId = ExtractChannelId(root);
+        var room = _matching.GetRoomByChannelId(channelId);
+        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
+
+        var userId = ExtractUserId(root);
+        var guildId = ExtractGuildId(root);
+        var token = root.GetProperty("token").GetString() ?? "";
+        if (userId == 0 || guildId == 0) return EphemeralMessage("user/guild 取得不可");
+        if (!room.MemberUserIds.Contains(userId))
+            return EphemeralMessage("❌ 既に退出済みです");
+
         var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
         ulong.TryParse(roleIdStr, out var waitingRoleId);
 
-        _ = Task.Run(() => DoLeaveRoomAsync(token, guildId, userId, waitingRoleId, room.Number, autoEnd: false));
+        _ = Task.Run(async () =>
+        {
+            await DoLeaveRoomAsync(token, guildId, userId, waitingRoleId, room.Number, autoEnd: false);
+            await _cmd.DeleteOriginalInteractionResponseAsync(token);
+        });
         return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
+    }
+
+    // キャンセル → 確認 ephemeral を「キャンセルしました」に上書き
+    private IActionResult HandleMatchingCancel(JsonElement root)
+    {
+        return Json(new
+        {
+            type = RESP_UPDATE_MESSAGE,
+            data = new
+            {
+                content = "キャンセルしました。",
+                components = Array.Empty<object>(),
+            },
+        });
+    }
+
+    // プレー開始ボタン → 募集中 → プレー中 に遷移 (即実行)
+    private IActionResult HandleMatchingPlayStart(JsonElement root)
+    {
+        var channelId = ExtractChannelId(root);
+        var room = _matching.GetRoomByChannelId(channelId);
+        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
+        if (room.Status != RoomStatus.Recruiting)
+            return EphemeralMessage("❌ 既にプレー中です");
+        var capacity = MatchingModes.CapacityOfDisplay(room.Mode);
+        if (room.MemberUserIds.Count > capacity)
+            return EphemeralMessage($"❌ 定員 ({capacity}) を超えているため開始できません");
+
+        var token = root.GetProperty("token").GetString() ?? "";
+        _ = Task.Run(async () =>
+        {
+            await _matching.UpdateRoomAsync(room.Number, r =>
+            {
+                r.Status = RoomStatus.Playing;
+                r.PlayStartUtc = DateTimeOffset.UtcNow;
+            });
+            RefreshRoomAnchor(room.Number);
+            _matching.RefreshDashboard();
+        });
+        return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
+    }
+
+    // プレー終了ボタン → プレー中 → 募集中 に遷移 (入室者は残る、即実行)
+    private IActionResult HandleMatchingPlayEnd(JsonElement root)
+    {
+        var channelId = ExtractChannelId(root);
+        var room = _matching.GetRoomByChannelId(channelId);
+        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
+        if (room.Status != RoomStatus.Playing)
+            return EphemeralMessage("❌ プレー中ではありません");
+
+        var token = root.GetProperty("token").GetString() ?? "";
+        var roomNumber = room.Number;
+        var roomMode = room.Mode;
+        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
+        ulong.TryParse(roleIdStr, out var waitingRoleId);
+
+        _ = Task.Run(async () =>
+        {
+            await _matching.UpdateRoomAsync(roomNumber, r =>
+            {
+                r.Status = RoomStatus.Recruiting;
+                r.PlayStartUtc = null;
+            });
+            RefreshRoomAnchor(roomNumber);
+            _matching.RefreshDashboard();
+            // 待機部屋チャンネルに「プレーが終了しました」通知 (status: Playing→Recruiting の遷移時のみ)
+            if (waitingRoleId != 0)
+            {
+                await PostMatchingNotificationAsync(
+                    waitingRoleId,
+                    $"部屋: オンマチ{MatchingManagerService.NumberToCircle(roomNumber)} {roomMode} のプレーが終了しました。");
+            }
+        });
+        return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
+    }
+
+    // モード変更ボタン → Modal を返す
+    private IActionResult HandleMatchingChangeModeOpen(JsonElement root)
+    {
+        var channelId = ExtractChannelId(root);
+        var room = _matching.GetRoomByChannelId(channelId);
+        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
+        if (room.Status != RoomStatus.Recruiting)
+            return EphemeralMessage("❌ プレー中はモード変更できません");
+
+        var options = MatchingModes.All
+            .Select(m => new
+            {
+                label = m.Display,
+                value = m.Value,
+                @default = m.Display == room.Mode,
+            })
+            .ToArray();
+
+        return Json(new
+        {
+            type = RESP_MODAL,
+            data = new
+            {
+                title = $"オンマチ{MatchingManagerService.NumberToCircle(room.Number)} モード変更",
+                custom_id = "matching:change-mode-modal",
+                components = new object[]
+                {
+                    new
+                    {
+                        type = 18, // LABEL
+                        label = "新しいモード",
+                        component = new
+                        {
+                            type = 3, // STRING_SELECT
+                            custom_id = "mode",
+                            min_values = 1,
+                            max_values = 1,
+                            options,
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    // 部屋アンカーを debounce 経由で更新
+    private void RefreshRoomAnchor(int roomNumber)
+    {
+        var room = _matching.GetRoom(roomNumber);
+        if (room is null || room.AnchorMessageId == 0) return;
+        _editDebouncer.Schedule(room.ChannelId, room.AnchorMessageId, () =>
+        {
+            var latest = _matching.GetRoom(roomNumber);
+            return latest is null
+                ? new { } as object
+                : _matching.BuildRoomAnchorPayload(latest);
+        });
     }
 
     // Phase 3 のプレー開始ボタン用に残す (退出は確認不要に変わった)
@@ -1568,7 +1815,7 @@ public class DiscordInteractionsController : ControllerBase
                             : _matching.BuildRoomAnchorPayload(latest);
                     });
             }
-            RefreshManagerMessage();
+            _matching.RefreshDashboard();
         }
         catch (Exception ex)
         {
@@ -1604,25 +1851,15 @@ public class DiscordInteractionsController : ControllerBase
             // state から除去
             await _matching.RemoveRoomAsync(roomNumber);
 
-            // 管理メッセージ更新 + 通知
-            RefreshManagerMessage();
-            await PostMatchingNotificationAsync(
-                waitingRoleId,
-                $"部屋: オンマチ{MatchingManagerService.NumberToCircle(roomNumber)} {room.Mode} のプレーが終了しました。");
+            // 管理メッセージ更新 (待機部屋への「プレー終了」通知は
+            // status: Playing→Recruiting の遷移時のみ送る仕様なのでここでは出さない)
+            _matching.RefreshDashboard();
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "end room failed");
             await _cmd.FollowUpTextAsync(token, $"❌ プレー終了処理エラー: {ex.Message}", ephemeral: true);
         }
-    }
-
-    // 管理メッセージを debounce 経由で更新する。連続イベントが発生してもまとめて 1 回 PATCH する。
-    private void RefreshManagerMessage()
-    {
-        var s = _matching.GetState();
-        if (s is null || s.MessageId == 0) return;
-        _editDebouncer.Schedule(s.ChannelId, s.MessageId, () => _matching.BuildMessagePayload());
     }
 
     private async Task PostMatchingNotificationAsync(ulong waitingRoleId, string text)
@@ -1891,6 +2128,11 @@ public class DiscordInteractionsController : ControllerBase
         if (parts.Length == 2 && parts[0] == "matching" && parts[1] == "create-modal")
         {
             return HandleMatchingCreateModalSubmit(root);
+        }
+
+        if (parts.Length == 2 && parts[0] == "matching" && parts[1] == "change-mode-modal")
+        {
+            return HandleMatchingChangeModeSubmit(root);
         }
 
 
