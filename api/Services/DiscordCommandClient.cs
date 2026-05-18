@@ -247,6 +247,14 @@ public sealed class DiscordCommandClient
                 type = 1,
                 default_member_permissions = "0",
             },
+            new
+            {
+                name = "matching-manager",
+                description = "オンマチ会 マッチング管理メッセージを投稿",
+                type = 1,
+                // ADMINISTRATOR (0x8) のみ
+                default_member_permissions = "8",
+            },
         };
 
         try
@@ -313,6 +321,137 @@ public sealed class DiscordCommandClient
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Discord follow-up threw");
+        }
+    }
+
+    /// <summary>
+    /// ギルドメンバーにロールを付与する (PUT)。404 = メンバーがいない、403 = 権限不足。
+    /// </summary>
+    public async Task<bool> AddMemberRoleAsync(
+        ulong guildId, ulong userId, ulong roleId, CancellationToken ct = default)
+    {
+        if (!Enabled) return false;
+        try
+        {
+            using var req = new HttpRequestMessage(
+                HttpMethod.Put,
+                $"guilds/{guildId}/members/{userId}/roles/{roleId}");
+            req.Content = new StringContent("", Encoding.UTF8, "application/json");
+            using var resp = await _http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning(
+                    "add role failed {Status}: {Body}",
+                    (int)resp.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "add role threw");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// ギルドメンバーからロールを剥奪する (DELETE)。
+    /// </summary>
+    public async Task<bool> RemoveMemberRoleAsync(
+        ulong guildId, ulong userId, ulong roleId, CancellationToken ct = default)
+    {
+        if (!Enabled) return false;
+        try
+        {
+            using var resp = await _http.DeleteAsync(
+                $"guilds/{guildId}/members/{userId}/roles/{roleId}", ct);
+            if (!resp.IsSuccessStatusCode &&
+                resp.StatusCode != System.Net.HttpStatusCode.NotFound)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning(
+                    "remove role failed {Status}: {Body}",
+                    (int)resp.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "remove role threw");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 任意のチャンネルにメッセージを投稿し、その message ID を返す。
+    /// Bot にチャンネルへの送信権限が無い場合は null。
+    /// </summary>
+    public async Task<ulong?> CreateChannelMessageAsync(
+        ulong channelId, object payload, CancellationToken ct = default)
+    {
+        if (!Enabled) return null;
+        try
+        {
+            using var resp = await _http.PostAsJsonAsync(
+                $"channels/{channelId}/messages", payload, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning(
+                    "create message failed {Status}: {Body}",
+                    (int)resp.StatusCode, body);
+                return null;
+            }
+            var body2 = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(body2);
+            if (doc.RootElement.TryGetProperty("id", out var id) &&
+                ulong.TryParse(id.GetString(), out var u))
+            {
+                return u;
+            }
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "create message threw");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 元 (interaction が紐付くメッセージ) を編集する。
+    /// component interaction で type=6 (DEFERRED_UPDATE_MESSAGE) を返した後に呼び、
+    /// クリックされたメッセージ本体を更新するために使う。
+    /// </summary>
+    public async Task<bool> EditOriginalInteractionResponseAsync(
+        string interactionToken, object payload, CancellationToken ct = default)
+    {
+        if (!Enabled) return false;
+        try
+        {
+            var req = new HttpRequestMessage(
+                new HttpMethod("PATCH"),
+                $"webhooks/{_appId}/{interactionToken}/messages/@original")
+            {
+                Content = JsonContent.Create(payload),
+            };
+            using var resp = await _http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning(
+                    "edit original failed {Status}: {Body}",
+                    (int)resp.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "edit original threw");
+            return false;
         }
     }
 

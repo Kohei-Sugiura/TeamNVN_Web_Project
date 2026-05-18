@@ -43,6 +43,7 @@ public class DiscordInteractionsController : ControllerBase
     private readonly Npgsql.NpgsqlDataSource _dataSource;
     private readonly DiscordCommandClient _cmd;
     private readonly RankingScreenshot _shot;
+    private readonly MatchingManagerService _matching;
 
     public DiscordInteractionsController(
         WeepaAdminClient admin,
@@ -50,7 +51,8 @@ public class DiscordInteractionsController : ControllerBase
         ILogger<DiscordInteractionsController> logger,
         Npgsql.NpgsqlDataSource dataSource,
         DiscordCommandClient cmd,
-        RankingScreenshot shot)
+        RankingScreenshot shot,
+        MatchingManagerService matching)
     {
         _admin = admin;
         _config = config;
@@ -58,6 +60,7 @@ public class DiscordInteractionsController : ControllerBase
         _dataSource = dataSource;
         _cmd = cmd;
         _shot = shot;
+        _matching = matching;
     }
 
     [HttpPost("interactions")]
@@ -280,6 +283,34 @@ public class DiscordInteractionsController : ControllerBase
         {
             _ = Task.Run(() => HandleMscEventsSchedulesAsync(token));
             return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "matching-manager")
+        {
+            // チャンネル ID / ギルド ID は interaction payload から取得
+            var channelId = root.TryGetProperty("channel_id", out var cid) &&
+                            ulong.TryParse(cid.GetString(), out var ch) ? ch : 0UL;
+            var guildId = root.TryGetProperty("guild_id", out var gid) &&
+                          ulong.TryParse(gid.GetString(), out var g) ? g : 0UL;
+            if (channelId == 0 || guildId == 0)
+            {
+                return EphemeralMessage("チャンネル / ギルド情報を取得できません");
+            }
+
+            // 待機部屋ロール ID が設定されていなければ早期エラー (仕様)
+            var roleId = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
+            if (string.IsNullOrWhiteSpace(roleId) || !ulong.TryParse(roleId, out _))
+            {
+                return EphemeralMessage(
+                    "MATCHING_WAITING_ROOM_ROLE_ID が .env に設定されていません。設定してから再実行してください。");
+            }
+
+            _ = Task.Run(() => HandleMatchingManagerCreateAsync(token, guildId, channelId));
+            return Json(new
+            {
+                type = RESP_DEFERRED_CHANNEL_MESSAGE,
+                data = new { flags = FLAG_EPHEMERAL },
+            });
         }
 
         return Json(new
@@ -982,12 +1013,108 @@ public class DiscordInteractionsController : ControllerBase
         }
     }
 
+    // ============================================
+    // オンマチ会 (matching-manager) handlers
+    // ============================================
+
+    private async Task HandleMatchingManagerCreateAsync(string token, ulong guildId, ulong channelId)
+    {
+        try
+        {
+            var payload = _matching.BuildMessagePayload();
+            var msgId = await _cmd.CreateChannelMessageAsync(channelId, payload);
+            if (msgId is null)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token,
+                    "❌ 投稿に失敗しました。Bot に送信権限があるか確認してください。",
+                    ephemeral: true);
+                return;
+            }
+            await _matching.SetStateAsync(new MatchingManagerState
+            {
+                GuildId = guildId,
+                ChannelId = channelId,
+                MessageId = msgId.Value,
+            });
+            await _cmd.FollowUpTextAsync(
+                token,
+                $"✅ マッチング管理メッセージを <#{channelId}> に投稿しました (古い管理メッセージは手動で削除してください)",
+                ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "matching-manager create failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private IActionResult HandleMatchingComponent(JsonElement root, string op)
+    {
+        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
+        if (string.IsNullOrWhiteSpace(roleIdStr) || !ulong.TryParse(roleIdStr, out var roleId))
+        {
+            return EphemeralMessage("MATCHING_WAITING_ROOM_ROLE_ID が未設定です");
+        }
+
+        if (op == "create-room")
+        {
+            return EphemeralMessage("Phase 2 で実装予定です");
+        }
+
+        // 重要: root (JsonElement) は parent の using var doc が解放されると無効になる。
+        // Task.Run へ渡す前に必要な値を string / ulong で取り出しておく。
+        var token = root.GetProperty("token").GetString() ?? "";
+        var guildId = root.TryGetProperty("guild_id", out var gid) &&
+                      ulong.TryParse(gid.GetString(), out var g) ? g : 0UL;
+        if (guildId == 0) return EphemeralMessage("ギルド ID を取得できません");
+
+        var userId = 0UL;
+        if (root.TryGetProperty("member", out var member) &&
+            member.TryGetProperty("user", out var user) &&
+            user.TryGetProperty("id", out var uid) &&
+            ulong.TryParse(uid.GetString(), out var u))
+        {
+            userId = u;
+        }
+        if (userId == 0) return EphemeralMessage("ユーザー ID を取得できません");
+
+        if (op == "join-wait" || op == "leave-wait")
+        {
+            var isJoin = op == "join-wait";
+            _ = Task.Run(async () =>
+            {
+                var roleOk = isJoin
+                    ? await _cmd.AddMemberRoleAsync(guildId, userId, roleId)
+                    : await _cmd.RemoveMemberRoleAsync(guildId, userId, roleId);
+                if (!roleOk)
+                {
+                    await _cmd.FollowUpTextAsync(
+                        token,
+                        $"❌ {(isJoin ? "入室" : "退出")}処理に失敗しました (Bot 権限 / ロール階層を確認してください)",
+                        ephemeral: true);
+                    return;
+                }
+                if (isJoin) await _matching.AddWaitingUserAsync(userId);
+                else        await _matching.RemoveWaitingUserAsync(userId);
+
+                // 元の管理メッセージ本体を更新 (= 入室者リスト反映)
+                var payload = _matching.BuildMessagePayload();
+                await _cmd.EditOriginalInteractionResponseAsync(token, payload);
+            });
+            // type=6: deferred update message。クリック loading は即消える + ephemeral message 出ない
+            return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
+        }
+
+        return InvalidComponent("未知の matching op");
+    }
+
     private async Task<IActionResult> HandleComponentAsync(
         JsonElement root, CancellationToken ct)
     {
         var customId = root.GetProperty("data").GetProperty("custom_id").GetString() ?? "";
         var parts = customId.Split(':');
-        if (parts.Length < 3) return InvalidComponent("custom_id 形式不正");
+        if (parts.Length < 2) return InvalidComponent("custom_id 形式不正");
 
         var domain = parts[0];
         var op = parts[1];
@@ -1011,6 +1138,11 @@ public class DiscordInteractionsController : ControllerBase
         {
             var xId = parts[3];
             return await HandleMscScoreComponentAsync(root, op, mscEventId, xId, mscSubmitId, ct);
+        }
+
+        if (domain == "matching" && parts.Length == 2)
+        {
+            return HandleMatchingComponent(root, op);
         }
 
         return InvalidComponent("未知の custom_id");
