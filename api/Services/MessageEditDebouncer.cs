@@ -23,6 +23,22 @@ public sealed class MessageEditDebouncer
     }
 
     /// <summary>
+    /// 同キーで pending な debounce があればキャンセルし、即時 PATCH する。
+    /// 状態遷移など 1 秒のラグも許容できない更新に使う。
+    /// </summary>
+    public async Task EditNowAsync(
+        ulong channelId, ulong messageId, object payload, CancellationToken ct = default)
+    {
+        var key = (channelId, messageId);
+        if (_pending.TryRemove(key, out var existing))
+        {
+            try { existing.Cancel(); existing.Dispose(); }
+            catch { /* ignore */ }
+        }
+        await _discord.EditChannelMessageAsync(channelId, messageId, payload, ct);
+    }
+
+    /// <summary>
     /// 1 秒以内に同じキーで再度呼ぶと、前の呼び出しはキャンセルされ、新しい payloadFactory が
     /// その時点での内容で実行される。fire-and-forget。
     /// </summary>

@@ -110,6 +110,20 @@ public sealed class MatchingManagerService
         _editDebouncer.Schedule(s.ChannelId, s.MessageId, BuildMessagePayload);
     }
 
+    /// <summary>
+    /// ダッシュボードを debounce を介さず即時 PATCH する。
+    /// プレー開始/終了などの状態遷移で、1 秒のラグや debounce 競合による
+    /// 取りこぼしを避けたい時に使う。
+    /// </summary>
+    public async Task RefreshDashboardNowAsync(CancellationToken ct = default)
+    {
+        var s = _state;
+        if (s is null || s.MessageId == 0) return;
+        LastDashboardRefreshAt = DateTimeOffset.UtcNow;
+        var payload = BuildMessagePayload();
+        await _editDebouncer.EditNowAsync(s.ChannelId, s.MessageId, payload, ct);
+    }
+
     public bool HasPlayingRoom() =>
         _state?.Rooms.Any(r => r.Status == RoomStatus.Playing) ?? false;
 
@@ -236,6 +250,46 @@ public sealed class MatchingManagerService
         finally { _fileLock.Release(); }
     }
 
+    /// <summary>
+    /// 部屋分割の活性条件チェック (Phase 4)。
+    /// - 募集中フェーズのみ
+    /// - ARENA: 5 人以上
+    /// - SINGLE / MEGAMIX (定員 2): 4 人以上かつ偶数
+    /// - 既存部屋数 - 1 + 新部屋数 ≦ 9
+    /// </summary>
+    public bool CanSplitRoom(MatchingRoom room)
+    {
+        if (room.Status != RoomStatus.Recruiting) return false;
+        var n = room.MemberUserIds.Count;
+        var cap = MatchingModes.CapacityOfDisplay(room.Mode);
+
+        bool memberOk = cap switch
+        {
+            4 => n >= 5,
+            2 => n >= 4 && n % 2 == 0,
+            _ => false,
+        };
+        if (!memberOk) return false;
+
+        var newRooms = (int)Math.Ceiling((double)n / cap);
+        var currentRooms = _state?.Rooms.Count ?? 0;
+        return (currentRooms - 1 + newRooms) <= 9;
+    }
+
+    /// <summary>
+    /// 分割時のメンバー配分を計算する。N 個の部屋に M 人を「人数差 ≦ 1」で配分。
+    /// 余り Extra 個の部屋を (Base+1) 人、残り (N - Extra) 個を Base 人にする。
+    /// </summary>
+    public static (int RoomCount, int[] PerRoomSize) ComputeSplitDistribution(int memberCount, int capacity)
+    {
+        var n = (int)Math.Ceiling((double)memberCount / capacity);
+        var baseSize = memberCount / n;
+        var extra = memberCount % n;
+        var sizes = new int[n];
+        for (int i = 0; i < n; i++) sizes[i] = baseSize + (i < extra ? 1 : 0);
+        return (n, sizes);
+    }
+
     public static string NumberToCircle(int n) => $"{(char)(0x2460 + n - 1)}";
 
     public static string FormatPassword(string pw) =>
@@ -333,7 +387,7 @@ public sealed class MatchingManagerService
                 // 部屋ごとに罫線 (1 部屋目の前にも引く → ボタン直下にも区切りが入る)
                 inner.Add(new { type = 14, divider = true, spacing = 1 });
                 var memberLines = r.MemberUserIds.Count > 0
-                    ? string.Join(" ", r.MemberUserIds.Select(u => $"<@{u}>"))
+                    ? string.Join("\n", r.MemberUserIds.Select(u => $"- <@{u}>"))
                     : "-# 誰も居ません";
                 var capacity = MatchingModes.CapacityOfDisplay(r.Mode);
                 var statusLine = r.Status == RoomStatus.Recruiting
@@ -462,12 +516,12 @@ public sealed class MatchingManagerService
                   disabled = isPlaying },
             playButton,
         };
+        var canSplit = CanSplitRoom(room);
         var row2 = new object[]
         {
-            // Phase 4 実装時もプレー中は disabled とする (覚え書き)
-            new { type = 2, style = 2, label = "部屋分割 (Phase 4)",
+            new { type = 2, style = 2, label = "部屋分割",
                   custom_id = "matching:split-room", emoji = new { name = "✂" },
-                  disabled = true },
+                  disabled = !canSplit },
             new { type = 2, style = 2, label = "退出",
                   custom_id = "matching:room-leave", emoji = new { name = "🚪" } },
         };

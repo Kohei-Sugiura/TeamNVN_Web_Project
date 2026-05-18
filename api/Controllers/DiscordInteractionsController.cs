@@ -1129,7 +1129,7 @@ public class DiscordInteractionsController : ControllerBase
         if (op == "play-start")    return HandleMatchingPlayStart(root);
         if (op == "play-end")      return HandleMatchingPlayEnd(root);
         if (op == "change-mode")   return HandleMatchingChangeModeOpen(root);
-        if (op == "split-room")    return EphemeralMessage("Phase 4 で実装予定です");
+        if (op == "split-room")    return HandleMatchingSplitRoom(root);
         // 退出確認 ephemeral 内のボタン (プレー中の退出時のみ表示)
         if (op == "confirm-leave") return HandleMatchingConfirmLeave(root);
         if (op == "cancel")        return HandleMatchingCancel(root);
@@ -1647,7 +1647,8 @@ public class DiscordInteractionsController : ControllerBase
                 r.PlayStartUtc = DateTimeOffset.UtcNow;
             });
             RefreshRoomAnchor(room.Number);
-            _matching.RefreshDashboard();
+            // 状態遷移は debounce を介さず即時反映 (1 秒ラグで「反映されない」と見えるのを防ぐ)
+            await _matching.RefreshDashboardNowAsync();
         });
         return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
     }
@@ -1675,7 +1676,8 @@ public class DiscordInteractionsController : ControllerBase
                 r.PlayStartUtc = null;
             });
             RefreshRoomAnchor(roomNumber);
-            _matching.RefreshDashboard();
+            // 状態遷移は debounce を介さず即時反映 (1 秒ラグで「反映されない」と見えるのを防ぐ)
+            await _matching.RefreshDashboardNowAsync();
             // 待機部屋チャンネルに「プレーが終了しました」通知 (status: Playing→Recruiting の遷移時のみ)
             if (waitingRoleId != 0)
             {
@@ -1730,6 +1732,172 @@ public class DiscordInteractionsController : ControllerBase
                 },
             },
         });
+    }
+
+    // 部屋分割ボタン (Phase 4)
+    private IActionResult HandleMatchingSplitRoom(JsonElement root)
+    {
+        var channelId = ExtractChannelId(root);
+        var room = _matching.GetRoomByChannelId(channelId);
+        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
+        if (!_matching.CanSplitRoom(room))
+            return EphemeralMessage("❌ 現在この部屋は分割できません");
+
+        var guildId = ExtractGuildId(root);
+        var token = root.GetProperty("token").GetString() ?? "";
+        if (guildId == 0) return EphemeralMessage("guild 取得不可");
+
+        var categoryIdStr = _config["MATCHING_ROOM_CATEGORY_ID"];
+        if (!ulong.TryParse(categoryIdStr, out var categoryId))
+            return EphemeralMessage("MATCHING_ROOM_CATEGORY_ID 未設定");
+        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
+        ulong.TryParse(roleIdStr, out var waitingRoleId);
+
+        _ = Task.Run(() => DoSplitRoomAsync(token, guildId, categoryId, waitingRoleId, room.Number));
+        return Json(new
+        {
+            type = RESP_DEFERRED_CHANNEL_MESSAGE,
+            data = new { flags = FLAG_EPHEMERAL },
+        });
+    }
+
+    private async Task DoSplitRoomAsync(
+        string token, ulong guildId, ulong categoryId, ulong waitingRoleId, int sourceRoomNumber)
+    {
+        var errors = new List<string>();
+        try
+        {
+            var sourceRoom = _matching.GetRoom(sourceRoomNumber);
+            if (sourceRoom is null)
+            {
+                await _cmd.FollowUpTextAsync(token, "❌ 元部屋が見つかりませんでした", ephemeral: true);
+                return;
+            }
+            if (!_matching.CanSplitRoom(sourceRoom))
+            {
+                await _cmd.FollowUpTextAsync(token, "❌ 現在この部屋は分割できません", ephemeral: true);
+                return;
+            }
+
+            var cap = MatchingModes.CapacityOfDisplay(sourceRoom.Mode);
+            var (n, sizes) = MatchingManagerService.ComputeSplitDistribution(sourceRoom.MemberUserIds.Count, cap);
+
+            // 1. メンバーをシャッフル
+            var shuffled = sourceRoom.MemberUserIds.OrderBy(_ => Random.Shared.Next()).ToList();
+
+            // 2. グループに分配
+            var groups = new List<List<ulong>>();
+            int idx = 0;
+            for (int i = 0; i < n; i++)
+            {
+                groups.Add(shuffled.Skip(idx).Take(sizes[i]).ToList());
+                idx += sizes[i];
+            }
+
+            // 3. 元部屋を state から先に削除 (Number 再利用のため)
+            await _matching.RemoveRoomAsync(sourceRoomNumber);
+
+            // 4. N 個の新部屋を作成
+            var createdRooms = new List<MatchingRoom>();
+            const long basicAllow = 1024 + 2048 + 65536;
+            var appId = _config["DISCORD_APP_ID"] ?? "";
+            for (int i = 0; i < n; i++)
+            {
+                var newNum = _matching.NextRoomNumber();
+                if (newNum == -1)
+                {
+                    errors.Add("9 部屋上限を超えたため一部の新部屋を作成できませんでした");
+                    break;
+                }
+                var circle = MatchingManagerService.NumberToCircle(newNum);
+
+                var newRoleId = await _cmd.CreateGuildRoleAsync(guildId, $"オンマチ{circle}");
+                if (newRoleId is null) { errors.Add($"オンマチ{circle} のロール作成失敗"); continue; }
+
+                var overwrites = new List<object>
+                {
+                    new { id = guildId.ToString(),        type = 0, deny  = "1024",                 allow = "0" },
+                    new { id = newRoleId.Value.ToString(), type = 0, allow = basicAllow.ToString(), deny  = "0" },
+                };
+                if (!string.IsNullOrEmpty(appId))
+                    overwrites.Add(new { id = appId, type = 1, allow = basicAllow.ToString(), deny = "0" });
+
+                var newChannelId = await _cmd.CreateGuildChannelAsync(guildId, new
+                {
+                    name = $"🎮オンマチ{circle}",
+                    type = 0,
+                    parent_id = categoryId.ToString(),
+                    permission_overwrites = overwrites,
+                });
+                if (newChannelId is null)
+                {
+                    await _cmd.DeleteGuildRoleAsync(guildId, newRoleId.Value);
+                    errors.Add($"オンマチ{circle} のチャンネル作成失敗");
+                    continue;
+                }
+
+                var pw = _matching.PickPassword() ?? "000000";
+                var newRoom = new MatchingRoom
+                {
+                    Number = newNum,
+                    Mode = sourceRoom.Mode,
+                    Password = pw,
+                    ChannelId = newChannelId.Value,
+                    RoleId = newRoleId.Value,
+                    MemberUserIds = groups[i],
+                };
+                await _matching.AddRoomAsync(newRoom);
+                createdRooms.Add(newRoom);
+
+                // メンバーに新ロール付与
+                foreach (var uid in groups[i])
+                {
+                    await _cmd.AddMemberRoleAsync(guildId, uid, newRoleId.Value);
+                }
+
+                // アンカー投稿 + ピン
+                var anchorPayload = _matching.BuildRoomAnchorPayload(newRoom);
+                var anchorMsgId = await _cmd.CreateChannelMessageAsync(newChannelId.Value, anchorPayload);
+                if (anchorMsgId is not null)
+                {
+                    await _matching.UpdateRoomAsync(newNum, r => r.AnchorMessageId = anchorMsgId.Value);
+                    await _cmd.PinMessageAsync(newChannelId.Value, anchorMsgId.Value);
+                }
+
+                // 待機部屋通知
+                if (waitingRoleId != 0)
+                {
+                    await PostMatchingNotificationAsync(
+                        waitingRoleId,
+                        $"部屋: オンマチ{circle} {sourceRoom.Mode} が作成されました。");
+                }
+            }
+
+            // 5. 元部屋のチャンネル/ロールを削除 (ロール削除で旧ロールも自動的に剥がれる)
+            await _cmd.DeleteChannelAsync(sourceRoom.ChannelId);
+            await _cmd.DeleteGuildRoleAsync(guildId, sourceRoom.RoleId);
+
+            // 6. ダッシュボード更新
+            _matching.RefreshDashboard();
+
+            // 7. ephemeral の "考え中" を消す or エラー報告
+            if (errors.Count == 0)
+            {
+                await _cmd.DeleteOriginalInteractionResponseAsync(token);
+            }
+            else
+            {
+                await _cmd.FollowUpTextAsync(
+                    token,
+                    $"⚠️ 部分的に失敗しました:\n- {string.Join("\n- ", errors)}",
+                    ephemeral: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "split room failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ 分割エラー: {ex.Message}", ephemeral: true);
+        }
     }
 
     // 部屋アンカーを debounce 経由で更新
@@ -1789,10 +1957,8 @@ public class DiscordInteractionsController : ControllerBase
             var room = _matching.GetRoom(roomNumber);
             if (room is null) return;
             await _cmd.RemoveMemberRoleAsync(guildId, userId, room.RoleId);
-            // 待機部屋ロールは「元々持っていなくても一律付与」(仕様)
-            await _cmd.AddMemberRoleAsync(guildId, userId, waitingRoleId);
+            // 退出後は待機部屋に自動的には入れない (待機部屋に戻りたい人は手動で「入室」ボタンを押す)
             await _matching.UpdateRoomAsync(roomNumber, r => r.MemberUserIds.Remove(userId));
-            await _matching.AddWaitingUserAsync(userId);
 
             var after = _matching.GetRoom(roomNumber);
             if (after is null) return;
@@ -1833,14 +1999,13 @@ public class DiscordInteractionsController : ControllerBase
             var room = _matching.GetRoom(roomNumber);
             if (room is null) return;
 
-            // 残メンバーを全員退出処理 (役割剥奪 + 待機部屋ロール付与)
+            // 残メンバー全員から部屋ロールを剥奪 (退出後は待機部屋に自動入室させない仕様)
+            // → ロール削除で自動的に剥がれるが、明示的に消しておく
             if (!alreadyEmptied)
             {
                 foreach (var uid in room.MemberUserIds.ToList())
                 {
                     await _cmd.RemoveMemberRoleAsync(guildId, uid, room.RoleId);
-                    await _cmd.AddMemberRoleAsync(guildId, uid, waitingRoleId);
-                    await _matching.AddWaitingUserAsync(uid);
                 }
             }
 
