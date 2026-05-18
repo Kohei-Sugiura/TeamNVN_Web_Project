@@ -43,7 +43,6 @@ public class DiscordInteractionsController : ControllerBase
     private readonly Npgsql.NpgsqlDataSource _dataSource;
     private readonly DiscordCommandClient _cmd;
     private readonly RankingScreenshot _shot;
-    private readonly SdvxRoomService _rooms;
 
     public DiscordInteractionsController(
         WeepaAdminClient admin,
@@ -51,8 +50,7 @@ public class DiscordInteractionsController : ControllerBase
         ILogger<DiscordInteractionsController> logger,
         Npgsql.NpgsqlDataSource dataSource,
         DiscordCommandClient cmd,
-        RankingScreenshot shot,
-        SdvxRoomService rooms)
+        RankingScreenshot shot)
     {
         _admin = admin;
         _config = config;
@@ -60,7 +58,6 @@ public class DiscordInteractionsController : ControllerBase
         _dataSource = dataSource;
         _cmd = cmd;
         _shot = shot;
-        _rooms = rooms;
     }
 
     [HttpPost("interactions")]
@@ -285,50 +282,6 @@ public class DiscordInteractionsController : ControllerBase
             return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
         }
 
-        if (name == "sdvx-room")
-        {
-            // subcommand 形式: data.options[0] が SUB_COMMAND
-            if (!data.TryGetProperty("options", out var subs) ||
-                subs.ValueKind != JsonValueKind.Array ||
-                subs.GetArrayLength() == 0)
-            {
-                return EphemeralMessage("subcommand が指定されていません");
-            }
-            var sub = subs[0];
-            var subName = sub.GetProperty("name").GetString() ?? "";
-            if (subName == "create")
-            {
-                var roomName = TryGetSubcommandStringOption(sub, "name");
-                var channelId = TryGetSubcommandStringOption(sub, "channel");
-                if (string.IsNullOrWhiteSpace(roomName) || string.IsNullOrWhiteSpace(channelId) ||
-                    !ulong.TryParse(channelId, out var chId))
-                {
-                    return EphemeralMessage("name / channel の指定が不正です");
-                }
-                _ = Task.Run(() => HandleSdvxRoomCreateAsync(token, chId, roomName));
-                return Json(new
-                {
-                    type = RESP_DEFERRED_CHANNEL_MESSAGE,
-                    data = new { flags = FLAG_EPHEMERAL },
-                });
-            }
-            if (subName == "delete")
-            {
-                var mid = TryGetSubcommandStringOption(sub, "message_id");
-                if (string.IsNullOrWhiteSpace(mid) || !ulong.TryParse(mid, out var msgId))
-                {
-                    return EphemeralMessage("message_id の指定が不正です");
-                }
-                _ = Task.Run(() => HandleSdvxRoomDeleteAsync(token, msgId));
-                return Json(new
-                {
-                    type = RESP_DEFERRED_CHANNEL_MESSAGE,
-                    data = new { flags = FLAG_EPHEMERAL },
-                });
-            }
-            return EphemeralMessage($"未対応の subcommand: {subName}");
-        }
-
         return Json(new
         {
             type = RESP_CHANNEL_MESSAGE,
@@ -367,200 +320,6 @@ public class DiscordInteractionsController : ControllerBase
     }
 
     private static readonly string[] JapaneseDayNames = { "日", "月", "火", "水", "木", "金", "土" };
-
-    private static string? TryGetSubcommandStringOption(JsonElement subcommand, string optionName)
-    {
-        if (!subcommand.TryGetProperty("options", out var opts)) return null;
-        foreach (var opt in opts.EnumerateArray())
-        {
-            if (opt.GetProperty("name").GetString() != optionName) continue;
-            if (!opt.TryGetProperty("value", out var v)) return null;
-            // CHANNEL (type 7) は value が channel ID 文字列、STRING (type 3) も文字列
-            return v.ValueKind == JsonValueKind.String ? v.GetString() :
-                   v.ValueKind == JsonValueKind.Number ? v.GetRawText() : null;
-        }
-        return null;
-    }
-
-    // embed.title が "🎮 部屋A" 形式なので、最初のスペース以降を取って部屋名を復元する。
-    // 該当が無ければ "(復元された部屋)" を返す。
-    private static string ExtractRoomNameFromMessage(JsonElement msg)
-    {
-        if (!msg.TryGetProperty("embeds", out var embeds) ||
-            embeds.ValueKind != JsonValueKind.Array ||
-            embeds.GetArrayLength() == 0)
-        {
-            return "(復元された部屋)";
-        }
-        var first = embeds[0];
-        if (!first.TryGetProperty("title", out var t) ||
-            t.ValueKind != JsonValueKind.String)
-        {
-            return "(復元された部屋)";
-        }
-        var raw = (t.GetString() ?? "").Trim();
-        var spaceIdx = raw.IndexOf(' ');
-        if (spaceIdx > 0 && spaceIdx < raw.Length - 1)
-        {
-            return raw.Substring(spaceIdx + 1).Trim();
-        }
-        return string.IsNullOrEmpty(raw) ? "(復元された部屋)" : raw;
-    }
-
-    private async Task HandleSdvxRoomCreateAsync(string token, ulong channelId, string roomName)
-    {
-        try
-        {
-            // 1. ID 不明の placeholder で POST (管理 ID は埋まらないが投稿成功で msg_id が判明)
-            var placeholder = _rooms.BuildMessagePayload(new SdvxRoomState
-            {
-                MessageId = 0,
-                ChannelId = channelId,
-                Name = roomName,
-            });
-            var msgId = await _cmd.CreateChannelMessageAsync(channelId, placeholder);
-            if (msgId is null)
-            {
-                await _cmd.FollowUpTextAsync(
-                    token,
-                    "❌ 指定チャンネルへの投稿に失敗しました。Bot に送信権限があるか確認してください。",
-                    ephemeral: true);
-                return;
-            }
-            // 2. 内部状態を登録
-            var state = _rooms.Register(msgId.Value, channelId, roomName);
-            // 3. 自身の管理 ID を埋め込んで edit
-            var finalPayload = _rooms.BuildMessagePayload(state);
-            await _cmd.EditChannelMessageAsync(channelId, msgId.Value, finalPayload);
-
-            await _cmd.FollowUpTextAsync(
-                token,
-                $"✅ 部屋『{roomName}』を <#{channelId}> に作成しました (管理 ID: `{msgId.Value}`)",
-                ephemeral: true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "sdvx-room create failed");
-            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
-        }
-    }
-
-    private async Task HandleSdvxRoomDeleteAsync(string token, ulong messageId)
-    {
-        try
-        {
-            var state = _rooms.Get(messageId);
-            if (state is null)
-            {
-                await _cmd.FollowUpTextAsync(
-                    token,
-                    $"❌ message_id={messageId} に対応する部屋が見つかりません",
-                    ephemeral: true);
-                return;
-            }
-            var ok = await _cmd.DeleteChannelMessageAsync(state.ChannelId, state.MessageId);
-            _rooms.Remove(messageId, out _);
-            await _cmd.FollowUpTextAsync(
-                token,
-                ok ? $"✅ 部屋『{state.Name}』を削除しました"
-                   : $"⚠️ 内部状態は削除しましたが、Discord メッセージ削除は失敗しました (権限不足の可能性)",
-                ephemeral: true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "sdvx-room delete failed");
-            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
-        }
-    }
-
-    private async Task<IActionResult> HandleSdvxRoomComponentAsync(
-        JsonElement root, string op, CancellationToken ct)
-    {
-        // Select Menu (sdvxroom:status) の場合は op を data.values[0] で上書き。
-        // 旧ボタン (sdvxroom:match 等) も同じ op 名なので switch でそのまま処理できる。
-        if (op == "status")
-        {
-            if (root.TryGetProperty("data", out var data) &&
-                data.TryGetProperty("values", out var values) &&
-                values.ValueKind == JsonValueKind.Array &&
-                values.GetArrayLength() > 0)
-            {
-                op = values[0].GetString() ?? "";
-            }
-            else
-            {
-                return InvalidComponent("status の選択値を取得できません");
-            }
-        }
-
-        // メッセージ ID は interaction.message.id から取得 (custom_id に含めなくて済む)
-        if (!root.TryGetProperty("message", out var msg) ||
-            !msg.TryGetProperty("id", out var mid) ||
-            !ulong.TryParse(mid.GetString(), out var messageId))
-        {
-            return InvalidComponent("message id を取得できません");
-        }
-        var state = _rooms.Get(messageId);
-        if (state is null)
-        {
-            // Bot 再起動などで状態が消失しているメッセージのボタンが押されたケース。
-            // メッセージ embed の title から部屋名を復元して、その場で管理対象に取り込む
-            // (lazy adoption)。Status は今回押されたボタンが決めるので Empty で初期化。
-            var channelId = msg.TryGetProperty("channel_id", out var cid) &&
-                            ulong.TryParse(cid.GetString(), out var ch)
-                ? ch : 0UL;
-            if (channelId == 0)
-            {
-                return EphemeralMessage("チャンネル ID を取得できないため復元できません");
-            }
-            var roomName = ExtractRoomNameFromMessage(msg);
-            state = _rooms.Register(messageId, channelId, roomName);
-            _logger.LogInformation(
-                "sdvx-room adopted orphan: msg={MessageId} channel={ChannelId} name={Name}",
-                messageId, channelId, roomName);
-        }
-
-        // PlayStartUtc は「クレジット開始時刻」。
-        // - 曲ボタン (1〜4): 未設定なら NOW を入れる、既にあれば維持 (誤タップで上書きしない)
-        // - マッチング中 / 終了: クリア (= 新しいクレジット開始の準備)
-        switch (op)
-        {
-            case "match":
-                state.Status = SdvxRoomStatus.Matching;
-                state.PlayStartUtc = null;
-                break;
-            case "s1":
-                state.Status = SdvxRoomStatus.Song1;
-                state.PlayStartUtc ??= DateTimeOffset.UtcNow;
-                break;
-            case "s2":
-                state.Status = SdvxRoomStatus.Song2;
-                state.PlayStartUtc ??= DateTimeOffset.UtcNow;
-                break;
-            case "s3":
-                state.Status = SdvxRoomStatus.Song3;
-                state.PlayStartUtc ??= DateTimeOffset.UtcNow;
-                break;
-            case "s4":
-                state.Status = SdvxRoomStatus.Song4;
-                state.PlayStartUtc ??= DateTimeOffset.UtcNow;
-                break;
-            case "end":
-                state.Status = SdvxRoomStatus.Finished;
-                state.PlayStartUtc = null;
-                break;
-            default:
-                return InvalidComponent("未知の sdvxroom op");
-        }
-
-        // UPDATE_MESSAGE で同じインタラクションでメッセージを更新
-        var payload = _rooms.BuildMessagePayload(state);
-        return Json(new
-        {
-            type = RESP_UPDATE_MESSAGE,
-            data = payload,
-        });
-    }
 
     private async Task HandleWeepaXPostAsync(string token, int? eventId, string level)
     {
@@ -1228,7 +987,7 @@ public class DiscordInteractionsController : ControllerBase
     {
         var customId = root.GetProperty("data").GetProperty("custom_id").GetString() ?? "";
         var parts = customId.Split(':');
-        if (parts.Length < 2) return InvalidComponent("custom_id 形式不正");
+        if (parts.Length < 3) return InvalidComponent("custom_id 形式不正");
 
         var domain = parts[0];
         var op = parts[1];
@@ -1252,11 +1011,6 @@ public class DiscordInteractionsController : ControllerBase
         {
             var xId = parts[3];
             return await HandleMscScoreComponentAsync(root, op, mscEventId, xId, mscSubmitId, ct);
-        }
-
-        if (domain == "sdvxroom" && parts.Length == 2)
-        {
-            return await HandleSdvxRoomComponentAsync(root, op, ct);
         }
 
         return InvalidComponent("未知の custom_id");
