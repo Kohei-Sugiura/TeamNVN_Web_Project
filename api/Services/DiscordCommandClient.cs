@@ -255,6 +255,13 @@ public sealed class DiscordCommandClient
                 // ADMINISTRATOR (0x8) のみ
                 default_member_permissions = "8",
             },
+            new
+            {
+                name = "room-panel",
+                description = "現在のマッチング部屋の管理パネルを最新メッセージとして再投稿",
+                type = 1,
+                // default_member_permissions を指定しない = 全員が使える
+            },
         };
 
         try
@@ -417,6 +424,190 @@ public sealed class DiscordCommandClient
         {
             _logger.LogWarning(ex, "create message threw");
             return null;
+        }
+    }
+
+    public async Task<bool> DeleteChannelMessageAsync(
+        ulong channelId, ulong messageId, CancellationToken ct = default)
+    {
+        if (!Enabled) return false;
+        try
+        {
+            using var resp = await _http.DeleteAsync(
+                $"channels/{channelId}/messages/{messageId}", ct);
+            if (!resp.IsSuccessStatusCode &&
+                resp.StatusCode != System.Net.HttpStatusCode.NotFound)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("delete channel message failed {Status}: {Body}", (int)resp.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "delete channel message threw"); return false; }
+    }
+
+    public async Task<bool> EditChannelMessageAsync(
+        ulong channelId, ulong messageId, object payload, CancellationToken ct = default)
+    {
+        if (!Enabled) return false;
+        try
+        {
+            using var req = new HttpRequestMessage(
+                new HttpMethod("PATCH"),
+                $"channels/{channelId}/messages/{messageId}")
+            {
+                Content = JsonContent.Create(payload),
+            };
+            using var resp = await _http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("edit channel message failed {Status}: {Body}", (int)resp.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "edit channel message threw"); return false; }
+    }
+
+    /// <summary>
+    /// ギルドにロールを作成して role ID を返す。失敗時 null。
+    /// </summary>
+    public async Task<ulong?> CreateGuildRoleAsync(
+        ulong guildId, string name, CancellationToken ct = default)
+    {
+        if (!Enabled) return null;
+        try
+        {
+            using var resp = await _http.PostAsJsonAsync(
+                $"guilds/{guildId}/roles",
+                new { name, mentionable = false }, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("create role failed {Status}: {Body}", (int)resp.StatusCode, body);
+                return null;
+            }
+            var body2 = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(body2);
+            if (doc.RootElement.TryGetProperty("id", out var id) &&
+                ulong.TryParse(id.GetString(), out var u)) return u;
+            return null;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "create role threw"); return null; }
+    }
+
+    public async Task<bool> DeleteGuildRoleAsync(
+        ulong guildId, ulong roleId, CancellationToken ct = default)
+    {
+        if (!Enabled) return false;
+        try
+        {
+            using var resp = await _http.DeleteAsync($"guilds/{guildId}/roles/{roleId}", ct);
+            if (!resp.IsSuccessStatusCode &&
+                resp.StatusCode != System.Net.HttpStatusCode.NotFound)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("delete role failed {Status}: {Body}", (int)resp.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "delete role threw"); return false; }
+    }
+
+    /// <summary>
+    /// ギルドにチャンネルを作成し、その channel ID を返す。payload は Discord API 仕様準拠。
+    /// </summary>
+    public async Task<ulong?> CreateGuildChannelAsync(
+        ulong guildId, object payload, CancellationToken ct = default)
+    {
+        if (!Enabled) return null;
+        try
+        {
+            using var resp = await _http.PostAsJsonAsync(
+                $"guilds/{guildId}/channels", payload, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("create channel failed {Status}: {Body}", (int)resp.StatusCode, body);
+                return null;
+            }
+            var body2 = await resp.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(body2);
+            if (doc.RootElement.TryGetProperty("id", out var id) &&
+                ulong.TryParse(id.GetString(), out var u)) return u;
+            return null;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "create channel threw"); return null; }
+    }
+
+    public async Task<bool> DeleteChannelAsync(ulong channelId, CancellationToken ct = default)
+    {
+        if (!Enabled) return false;
+        try
+        {
+            using var resp = await _http.DeleteAsync($"channels/{channelId}", ct);
+            if (!resp.IsSuccessStatusCode &&
+                resp.StatusCode != System.Net.HttpStatusCode.NotFound)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("delete channel failed {Status}: {Body}", (int)resp.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "delete channel threw"); return false; }
+    }
+
+    public async Task<bool> PinMessageAsync(
+        ulong channelId, ulong messageId, CancellationToken ct = default)
+    {
+        if (!Enabled) return false;
+        try
+        {
+            using var req = new HttpRequestMessage(
+                HttpMethod.Put, $"channels/{channelId}/pins/{messageId}");
+            using var resp = await _http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("pin message failed {Status}: {Body}", (int)resp.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "pin message threw"); return false; }
+    }
+
+    /// <summary>
+    /// 元 (interaction が紐付くメッセージ) を削除する。
+    /// deferred ephemeral 応答後に "考え中" 表示も含めて消したい時に使う。
+    /// </summary>
+    public async Task<bool> DeleteOriginalInteractionResponseAsync(
+        string interactionToken, CancellationToken ct = default)
+    {
+        if (!Enabled) return false;
+        try
+        {
+            using var resp = await _http.DeleteAsync(
+                $"webhooks/{_appId}/{interactionToken}/messages/@original", ct);
+            if (!resp.IsSuccessStatusCode &&
+                resp.StatusCode != System.Net.HttpStatusCode.NotFound)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning(
+                    "delete original failed {Status}: {Body}",
+                    (int)resp.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "delete original threw");
+            return false;
         }
     }
 

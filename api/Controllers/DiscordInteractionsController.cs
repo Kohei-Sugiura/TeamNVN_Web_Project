@@ -44,6 +44,7 @@ public class DiscordInteractionsController : ControllerBase
     private readonly DiscordCommandClient _cmd;
     private readonly RankingScreenshot _shot;
     private readonly MatchingManagerService _matching;
+    private readonly MessageEditDebouncer _editDebouncer;
 
     public DiscordInteractionsController(
         WeepaAdminClient admin,
@@ -52,7 +53,8 @@ public class DiscordInteractionsController : ControllerBase
         Npgsql.NpgsqlDataSource dataSource,
         DiscordCommandClient cmd,
         RankingScreenshot shot,
-        MatchingManagerService matching)
+        MatchingManagerService matching,
+        MessageEditDebouncer editDebouncer)
     {
         _admin = admin;
         _config = config;
@@ -61,6 +63,7 @@ public class DiscordInteractionsController : ControllerBase
         _cmd = cmd;
         _shot = shot;
         _matching = matching;
+        _editDebouncer = editDebouncer;
     }
 
     [HttpPost("interactions")]
@@ -283,6 +286,26 @@ public class DiscordInteractionsController : ControllerBase
         {
             _ = Task.Run(() => HandleMscEventsSchedulesAsync(token));
             return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
+        }
+
+        if (name == "room-panel")
+        {
+            var channelId = root.TryGetProperty("channel_id", out var cidEl) &&
+                            ulong.TryParse(cidEl.GetString(), out var ch) ? ch : 0UL;
+            if (channelId == 0) return EphemeralMessage("チャンネル ID を取得できません");
+
+            var room = _matching.GetRoomByChannelId(channelId);
+            if (room is null)
+            {
+                return EphemeralMessage("❌ ここはマッチング部屋ではありません");
+            }
+
+            _ = Task.Run(() => HandleRoomPanelAsync(token, channelId, room.Number));
+            return Json(new
+            {
+                type = RESP_DEFERRED_CHANNEL_MESSAGE,
+                data = new { flags = FLAG_EPHEMERAL },
+            });
         }
 
         if (name == "matching-manager")
@@ -1017,6 +1040,45 @@ public class DiscordInteractionsController : ControllerBase
     // オンマチ会 (matching-manager) handlers
     // ============================================
 
+    private async Task HandleRoomPanelAsync(string token, ulong channelId, int roomNumber)
+    {
+        try
+        {
+            var room = _matching.GetRoom(roomNumber);
+            if (room is null)
+            {
+                await _cmd.FollowUpTextAsync(token, "❌ 部屋情報を取得できませんでした", ephemeral: true);
+                return;
+            }
+
+            // 1. 既存アンカーを削除
+            if (room.AnchorMessageId != 0)
+            {
+                await _cmd.DeleteChannelMessageAsync(channelId, room.AnchorMessageId);
+            }
+
+            // 2. 新しいアンカーを投稿 (= 最新メッセージとして下に出る)
+            var payload = _matching.BuildRoomAnchorPayload(room);
+            var newMsgId = await _cmd.CreateChannelMessageAsync(channelId, payload);
+            if (newMsgId is null)
+            {
+                await _cmd.FollowUpTextAsync(token, "❌ パネルの再投稿に失敗しました", ephemeral: true);
+                return;
+            }
+
+            // 3. state を新 ID で更新 (pin はしない: チャットで流れた時の bump 用なので pin 通知は出さない)
+            await _matching.UpdateRoomAsync(roomNumber, r => r.AnchorMessageId = newMsgId.Value);
+
+            // 4. ephemeral の "考え中" を消す
+            await _cmd.DeleteOriginalInteractionResponseAsync(token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "room-panel failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
     private async Task HandleMatchingManagerCreateAsync(string token, ulong guildId, ulong channelId)
     {
         try
@@ -1049,7 +1111,7 @@ public class DiscordInteractionsController : ControllerBase
         }
     }
 
-    private IActionResult HandleMatchingComponent(JsonElement root, string op)
+    private IActionResult HandleMatchingComponent(JsonElement root, string op, string[] parts)
     {
         var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
         if (string.IsNullOrWhiteSpace(roleIdStr) || !ulong.TryParse(roleIdStr, out var roleId))
@@ -1057,10 +1119,14 @@ public class DiscordInteractionsController : ControllerBase
             return EphemeralMessage("MATCHING_WAITING_ROOM_ROLE_ID が未設定です");
         }
 
-        if (op == "create-room")
-        {
-            return EphemeralMessage("Phase 2 で実装予定です");
-        }
+        // 入退室操作以外 (create-room / room-leave / play-end など) は別の関数群へ
+        if (op == "create-room") return HandleMatchingCreateRoomOpen(root);
+        if (op == "mode-select") return HandleMatchingCreateRoomSubmit(root);
+        if (op == "join-room" && parts.Length >= 3 && int.TryParse(parts[2], out var jrn))
+            return HandleMatchingJoinRoom(root, jrn);
+        // 退出 / プレー開始 ボタン (それぞれ確認 Modal を返す)
+        if (op == "room-leave") return HandleMatchingRoomLeave(root);
+        if (op == "play-start") return EphemeralMessage("Phase 3 で実装予定です");
 
         // 重要: root (JsonElement) は parent の using var doc が解放されると無効になる。
         // Task.Run へ渡す前に必要な値を string / ulong で取り出しておく。
@@ -1082,6 +1148,18 @@ public class DiscordInteractionsController : ControllerBase
         if (op == "join-wait" || op == "leave-wait")
         {
             var isJoin = op == "join-wait";
+
+            // 既に部屋に居るユーザーは待機部屋へ入れない (1 人 1 部屋制約の徹底)
+            if (isJoin)
+            {
+                var inRoom = _matching.FindRoomContaining(userId);
+                if (inRoom is not null)
+                {
+                    return EphemeralMessage(
+                        $"❌ 既に部屋 (オンマチ{MatchingManagerService.NumberToCircle(inRoom.Number)}) に入室中のため、待機部屋には入れません");
+                }
+            }
+
             _ = Task.Run(async () =>
             {
                 var roleOk = isJoin
@@ -1098,9 +1176,8 @@ public class DiscordInteractionsController : ControllerBase
                 if (isJoin) await _matching.AddWaitingUserAsync(userId);
                 else        await _matching.RemoveWaitingUserAsync(userId);
 
-                // 元の管理メッセージ本体を更新 (= 入室者リスト反映)
-                var payload = _matching.BuildMessagePayload();
-                await _cmd.EditOriginalInteractionResponseAsync(token, payload);
+                // 管理メッセージ本体を debounce 経由で更新 (連続クリック対策)
+                RefreshManagerMessage();
             });
             // type=6: deferred update message。クリック loading は即消える + ephemeral message 出ない
             return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
@@ -1108,6 +1185,475 @@ public class DiscordInteractionsController : ControllerBase
 
         return InvalidComponent("未知の matching op");
     }
+
+    // create-room button → モーダル (Label でラップした String Select 入り)
+    private IActionResult HandleMatchingCreateRoomOpen(JsonElement root)
+    {
+        var nextNum = _matching.NextRoomNumber();
+        if (nextNum == -1) return EphemeralMessage("❌ 現在満室です (9 部屋まで)");
+        var userId = ExtractUserId(root);
+        if (userId != 0)
+        {
+            var existing = _matching.FindRoomContaining(userId);
+            if (existing is not null)
+                return EphemeralMessage(
+                    $"❌ 既に他の部屋 (オンマチ{MatchingManagerService.NumberToCircle(existing.Number)}) に入室中です");
+        }
+
+        var options = MatchingModes.All
+            .Select((m, idx) => new
+            {
+                label = m.Display,
+                value = m.Value,
+                @default = idx == 0,
+            })
+            .ToArray();
+
+        return Json(new
+        {
+            type = RESP_MODAL,
+            data = new
+            {
+                title = "新規マッチング部屋",
+                custom_id = "matching:create-modal",
+                components = new object[]
+                {
+                    new
+                    {
+                        type = 18, // LABEL (Components V2)
+                        label = "モードを選択",
+                        component = new
+                        {
+                            type = 3, // STRING_SELECT
+                            custom_id = "mode",
+                            min_values = 1,
+                            max_values = 1,
+                            options,
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    // 旧: ephemeral string-select 経由でこのコンポーネントが押されるケース (互換用に残す)
+    private IActionResult HandleMatchingCreateRoomSubmit(JsonElement root)
+    {
+        var mode = "";
+        if (root.TryGetProperty("data", out var data) &&
+            data.TryGetProperty("values", out var values) &&
+            values.ValueKind == JsonValueKind.Array &&
+            values.GetArrayLength() > 0)
+        {
+            mode = values[0].GetString() ?? "";
+        }
+        return ProcessCreateRoomSubmission(root, mode, isModal: false);
+    }
+
+    // モーダル submit → Label でラップされた StringSelect の値を取り出す
+    private IActionResult HandleMatchingCreateModalSubmit(JsonElement root)
+    {
+        var mode = ExtractModalSelectValue(root, "mode");
+        return ProcessCreateRoomSubmission(root, mode, isModal: true);
+    }
+
+
+    private static string ExtractModalSelectValue(JsonElement root, string targetCustomId)
+    {
+        if (!root.TryGetProperty("data", out var data)) return "";
+        if (!data.TryGetProperty("components", out var topComps)) return "";
+        foreach (var node in topComps.EnumerateArray())
+        {
+            // 直接 STRING_SELECT (type 3) のケースと、LABEL (type 18) が wrap しているケース両対応
+            if (node.TryGetProperty("type", out var t))
+            {
+                var typeNum = t.GetInt32();
+                if (typeNum == 18 && node.TryGetProperty("component", out var inner))
+                {
+                    if (TryReadSelectValue(inner, targetCustomId, out var v)) return v;
+                }
+                if (typeNum == 3)
+                {
+                    if (TryReadSelectValue(node, targetCustomId, out var v)) return v;
+                }
+                // ACTION_ROW (type 1) の中に StringSelect が居る可能性も一応見る
+                if (typeNum == 1 && node.TryGetProperty("components", out var children))
+                {
+                    foreach (var c in children.EnumerateArray())
+                    {
+                        if (TryReadSelectValue(c, targetCustomId, out var v)) return v;
+                    }
+                }
+            }
+        }
+        return "";
+    }
+
+    private static bool TryReadSelectValue(JsonElement el, string targetCustomId, out string value)
+    {
+        value = "";
+        if (!el.TryGetProperty("custom_id", out var cid)) return false;
+        if (cid.GetString() != targetCustomId) return false;
+        if (!el.TryGetProperty("values", out var vals)) return false;
+        if (vals.ValueKind != JsonValueKind.Array || vals.GetArrayLength() == 0) return false;
+        value = vals[0].GetString() ?? "";
+        return true;
+    }
+
+    private IActionResult ProcessCreateRoomSubmission(JsonElement root, string mode, bool isModal)
+    {
+        var modeDisplay = MatchingModes.ToDisplay(mode);
+        if (modeDisplay is null) return EphemeralMessage("❌ 不正なモード");
+
+        var guildId = ExtractGuildId(root);
+        var userId = ExtractUserId(root);
+        var token = root.GetProperty("token").GetString() ?? "";
+        if (guildId == 0 || userId == 0) return EphemeralMessage("guild/user 取得不可");
+
+        // 再チェック (race condition 対策)
+        var nextNum = _matching.NextRoomNumber();
+        if (nextNum == -1) return EphemeralMessage("❌ 現在満室です");
+        var existing = _matching.FindRoomContaining(userId);
+        if (existing is not null)
+            return EphemeralMessage(
+                $"❌ 既に他の部屋 (オンマチ{MatchingManagerService.NumberToCircle(existing.Number)}) に入室中です");
+
+        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
+        if (!ulong.TryParse(roleIdStr, out var waitingRoleId))
+            return EphemeralMessage("MATCHING_WAITING_ROOM_ROLE_ID 未設定");
+        var categoryIdStr = _config["MATCHING_ROOM_CATEGORY_ID"];
+        if (!ulong.TryParse(categoryIdStr, out var categoryId))
+            return EphemeralMessage("MATCHING_ROOM_CATEGORY_ID 未設定");
+
+        _ = Task.Run(() => DoCreateRoomAsync(token, guildId, userId, waitingRoleId, categoryId, nextNum, mode, modeDisplay));
+        // モーダルの場合は新しい応答メッセージは出ない → deferred channel message + ephemeral で初期化
+        // → DoCreateRoomAsync の EditOriginalInteractionResponseAsync が成功メッセージで上書き
+        return Json(new
+        {
+            type = RESP_DEFERRED_CHANNEL_MESSAGE,
+            data = new { flags = FLAG_EPHEMERAL },
+        });
+    }
+
+    private async Task DoCreateRoomAsync(
+        string token, ulong guildId, ulong creatorUserId, ulong waitingRoleId,
+        ulong categoryId, int roomNumber, string modeValue, string modeDisplay)
+    {
+        try
+        {
+            // 1. ロール作成
+            var circle = MatchingManagerService.NumberToCircle(roomNumber);
+            var roleName = $"オンマチ{circle}";
+            var roleId = await _cmd.CreateGuildRoleAsync(guildId, roleName);
+            if (roleId is null)
+            {
+                await _cmd.FollowUpTextAsync(token, "❌ ロール作成に失敗しました", ephemeral: true);
+                return;
+            }
+
+            // 2. チャンネル作成 (permission overwrites 付き)
+            // 最小限の権限 (VIEW_CHANNEL=1024 / SEND_MESSAGES=2048 / READ_MESSAGE_HISTORY=65536)
+            // のみ Bot が確実に持っているはずなので、ここに絞る。
+            // ※ Discord は「自分が持っていない権限を allow に入れる」と 403 を返すため。
+            const long basicAllow = 1024 + 2048 + 65536; // = 68608
+            var appId = _config["DISCORD_APP_ID"] ?? "";
+            var overwrites = new List<object>
+            {
+                new { id = guildId.ToString(),      type = 0, deny  = "1024",                 allow = "0" },
+                new { id = roleId.Value.ToString(), type = 0, allow = basicAllow.ToString(),  deny  = "0" },
+            };
+            if (!string.IsNullOrEmpty(appId))
+            {
+                overwrites.Add(new { id = appId, type = 1, allow = basicAllow.ToString(), deny = "0" });
+            }
+            var channelPayload = new
+            {
+                name = $"🎮オンマチ{circle}",
+                type = 0,
+                parent_id = categoryId.ToString(),
+                permission_overwrites = overwrites,
+            };
+            var channelId = await _cmd.CreateGuildChannelAsync(guildId, channelPayload);
+            if (channelId is null)
+            {
+                await _cmd.DeleteGuildRoleAsync(guildId, roleId.Value);
+                await _cmd.FollowUpTextAsync(token, "❌ チャンネル作成に失敗しました", ephemeral: true);
+                return;
+            }
+
+            // 3. 作成者を入室処理 (待機部屋ロール剥奪 → 部屋ロール付与)
+            await _cmd.RemoveMemberRoleAsync(guildId, creatorUserId, waitingRoleId);
+            await _cmd.AddMemberRoleAsync(guildId, creatorUserId, roleId.Value);
+            await _matching.RemoveWaitingUserAsync(creatorUserId);
+
+            // 4. パスワード採番 + state 登録
+            var pw = _matching.PickPassword() ?? "000000";
+            var room = new MatchingRoom
+            {
+                Number = roomNumber,
+                Mode = modeDisplay,
+                Password = pw,
+                ChannelId = channelId.Value,
+                RoleId = roleId.Value,
+                MemberUserIds = new List<ulong> { creatorUserId },
+            };
+            await _matching.AddRoomAsync(room);
+
+            // 5. 部屋チャンネルにアンカーメッセージ投稿 + ピン
+            var anchorPayload = _matching.BuildRoomAnchorPayload(room);
+            var anchorMsgId = await _cmd.CreateChannelMessageAsync(channelId.Value, anchorPayload);
+            if (anchorMsgId is not null)
+            {
+                await _matching.UpdateRoomAsync(roomNumber, r => r.AnchorMessageId = anchorMsgId.Value);
+                await _cmd.PinMessageAsync(channelId.Value, anchorMsgId.Value);
+            }
+
+            // 6. 管理メッセージを更新 (Phase 1 メッセージ)
+            RefreshManagerMessage();
+
+            // 7. 待機部屋チャンネルに通知 (ロール mention 付き)
+            await PostMatchingNotificationAsync(
+                waitingRoleId,
+                $"部屋: オンマチ{circle} {modeDisplay} が作成されました。");
+
+            // 8. ephemeral の "考え中" 表示を消す (成功時は通知メッセージで十分なので個別 ephemeral は不要)
+            await _cmd.DeleteOriginalInteractionResponseAsync(token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "create room failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ 部屋作成中にエラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private IActionResult HandleMatchingJoinRoom(JsonElement root, int roomNumber)
+    {
+        var room = _matching.GetRoom(roomNumber);
+        if (room is null) return EphemeralMessage("❌ 対象の部屋が存在しません");
+
+        var userId = ExtractUserId(root);
+        var guildId = ExtractGuildId(root);
+        var token = root.GetProperty("token").GetString() ?? "";
+        if (userId == 0 || guildId == 0) return EphemeralMessage("user/guild 取得不可");
+
+        var existing = _matching.FindRoomContaining(userId);
+        if (existing is not null)
+            return EphemeralMessage(
+                $"❌ 既に他の部屋 (オンマチ{MatchingManagerService.NumberToCircle(existing.Number)}) に入室中です");
+
+        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
+        ulong.TryParse(roleIdStr, out var waitingRoleId);
+
+        _ = Task.Run(async () =>
+        {
+            await _cmd.RemoveMemberRoleAsync(guildId, userId, waitingRoleId);
+            await _matching.RemoveWaitingUserAsync(userId);
+            var ok = await _cmd.AddMemberRoleAsync(guildId, userId, room.RoleId);
+            if (!ok)
+            {
+                await _cmd.FollowUpTextAsync(token, "❌ 入室処理に失敗しました", ephemeral: true);
+                return;
+            }
+            await _matching.UpdateRoomAsync(roomNumber, r =>
+            {
+                if (!r.MemberUserIds.Contains(userId)) r.MemberUserIds.Add(userId);
+            });
+
+            // 部屋アンカー + 管理メッセージ更新 (debounce 経由)
+            var refreshed = _matching.GetRoom(roomNumber);
+            if (refreshed is not null && refreshed.AnchorMessageId != 0)
+            {
+                _editDebouncer.Schedule(
+                    refreshed.ChannelId, refreshed.AnchorMessageId,
+                    () =>
+                    {
+                        var latest = _matching.GetRoom(roomNumber);
+                        return latest is null
+                            ? new { } as object
+                            : _matching.BuildRoomAnchorPayload(latest);
+                    });
+            }
+            RefreshManagerMessage();
+        });
+        return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
+    }
+
+    // 退出ボタン → 確認なしで即退出
+    private IActionResult HandleMatchingRoomLeave(JsonElement root)
+    {
+        var channelId = ExtractChannelId(root);
+        var room = _matching.GetRoomByChannelId(channelId);
+        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
+
+        var userId = ExtractUserId(root);
+        var guildId = ExtractGuildId(root);
+        var token = root.GetProperty("token").GetString() ?? "";
+        if (userId == 0 || guildId == 0) return EphemeralMessage("user/guild 取得不可");
+        if (!room.MemberUserIds.Contains(userId))
+            return EphemeralMessage("❌ あなたはこの部屋の入室者ではありません");
+
+        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
+        ulong.TryParse(roleIdStr, out var waitingRoleId);
+
+        _ = Task.Run(() => DoLeaveRoomAsync(token, guildId, userId, waitingRoleId, room.Number, autoEnd: false));
+        return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
+    }
+
+    // Phase 3 のプレー開始ボタン用に残す (退出は確認不要に変わった)
+    private IActionResult BuildConfirmModal(string title, string labelText, string confirmLabel, string customId)
+    {
+        return Json(new
+        {
+            type = RESP_MODAL,
+            data = new
+            {
+                title,
+                custom_id = customId,
+                components = new object[]
+                {
+                    new
+                    {
+                        type = 18, // LABEL
+                        label = labelText,
+                        component = new
+                        {
+                            type = 3, // STRING_SELECT
+                            custom_id = "confirm",
+                            min_values = 1,
+                            max_values = 1,
+                            options = new object[]
+                            {
+                                new { label = confirmLabel,    value = "yes" },
+                                new { label = "キャンセル",   value = "no"  },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    private async Task DoLeaveRoomAsync(
+        string token, ulong guildId, ulong userId, ulong waitingRoleId,
+        int roomNumber, bool autoEnd)
+    {
+        try
+        {
+            var room = _matching.GetRoom(roomNumber);
+            if (room is null) return;
+            await _cmd.RemoveMemberRoleAsync(guildId, userId, room.RoleId);
+            // 待機部屋ロールは「元々持っていなくても一律付与」(仕様)
+            await _cmd.AddMemberRoleAsync(guildId, userId, waitingRoleId);
+            await _matching.UpdateRoomAsync(roomNumber, r => r.MemberUserIds.Remove(userId));
+            await _matching.AddWaitingUserAsync(userId);
+
+            var after = _matching.GetRoom(roomNumber);
+            if (after is null) return;
+            if (after.MemberUserIds.Count == 0)
+            {
+                // 無人 → 自動削除
+                await DoEndRoomAsync(token, guildId, waitingRoleId, roomNumber, alreadyEmptied: true);
+                return;
+            }
+
+            if (after.AnchorMessageId != 0)
+            {
+                _editDebouncer.Schedule(
+                    after.ChannelId, after.AnchorMessageId,
+                    () =>
+                    {
+                        var latest = _matching.GetRoom(roomNumber);
+                        return latest is null
+                            ? new { } as object
+                            : _matching.BuildRoomAnchorPayload(latest);
+                    });
+            }
+            RefreshManagerMessage();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "leave room failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ 退出処理エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    private async Task DoEndRoomAsync(
+        string token, ulong guildId, ulong waitingRoleId, int roomNumber,
+        bool alreadyEmptied = false)
+    {
+        try
+        {
+            var room = _matching.GetRoom(roomNumber);
+            if (room is null) return;
+
+            // 残メンバーを全員退出処理 (役割剥奪 + 待機部屋ロール付与)
+            if (!alreadyEmptied)
+            {
+                foreach (var uid in room.MemberUserIds.ToList())
+                {
+                    await _cmd.RemoveMemberRoleAsync(guildId, uid, room.RoleId);
+                    await _cmd.AddMemberRoleAsync(guildId, uid, waitingRoleId);
+                    await _matching.AddWaitingUserAsync(uid);
+                }
+            }
+
+            // チャンネル / ロール削除
+            await _cmd.DeleteChannelAsync(room.ChannelId);
+            await _cmd.DeleteGuildRoleAsync(guildId, room.RoleId);
+
+            // state から除去
+            await _matching.RemoveRoomAsync(roomNumber);
+
+            // 管理メッセージ更新 + 通知
+            RefreshManagerMessage();
+            await PostMatchingNotificationAsync(
+                waitingRoleId,
+                $"部屋: オンマチ{MatchingManagerService.NumberToCircle(roomNumber)} {room.Mode} のプレーが終了しました。");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "end room failed");
+            await _cmd.FollowUpTextAsync(token, $"❌ プレー終了処理エラー: {ex.Message}", ephemeral: true);
+        }
+    }
+
+    // 管理メッセージを debounce 経由で更新する。連続イベントが発生してもまとめて 1 回 PATCH する。
+    private void RefreshManagerMessage()
+    {
+        var s = _matching.GetState();
+        if (s is null || s.MessageId == 0) return;
+        _editDebouncer.Schedule(s.ChannelId, s.MessageId, () => _matching.BuildMessagePayload());
+    }
+
+    private async Task PostMatchingNotificationAsync(ulong waitingRoleId, string text)
+    {
+        var notifyChannelStr = _config["MATCHING_WAITING_ROOM_CHANNEL_ID"];
+        if (!ulong.TryParse(notifyChannelStr, out var notifyChannelId)) return;
+        var payload = new
+        {
+            content = $"<@&{waitingRoleId}> {text}",
+            allowed_mentions = new { roles = new[] { waitingRoleId.ToString() } },
+        };
+        await _cmd.CreateChannelMessageAsync(notifyChannelId, payload);
+    }
+
+    private static ulong ExtractGuildId(JsonElement root) =>
+        root.TryGetProperty("guild_id", out var g) &&
+        ulong.TryParse(g.GetString(), out var u) ? u : 0UL;
+    private static ulong ExtractUserId(JsonElement root)
+    {
+        if (root.TryGetProperty("member", out var m) &&
+            m.TryGetProperty("user", out var u) &&
+            u.TryGetProperty("id", out var i) &&
+            ulong.TryParse(i.GetString(), out var v)) return v;
+        if (root.TryGetProperty("user", out var u2) &&
+            u2.TryGetProperty("id", out var i2) &&
+            ulong.TryParse(i2.GetString(), out var v2)) return v2;
+        return 0UL;
+    }
+    private static ulong ExtractChannelId(JsonElement root) =>
+        root.TryGetProperty("channel_id", out var c) &&
+        ulong.TryParse(c.GetString(), out var u) ? u : 0UL;
 
     private async Task<IActionResult> HandleComponentAsync(
         JsonElement root, CancellationToken ct)
@@ -1140,9 +1686,9 @@ public class DiscordInteractionsController : ControllerBase
             return await HandleMscScoreComponentAsync(root, op, mscEventId, xId, mscSubmitId, ct);
         }
 
-        if (domain == "matching" && parts.Length == 2)
+        if (domain == "matching" && parts.Length >= 2)
         {
-            return HandleMatchingComponent(root, op);
+            return HandleMatchingComponent(root, op, parts);
         }
 
         return InvalidComponent("未知の custom_id");
@@ -1341,6 +1887,12 @@ public class DiscordInteractionsController : ControllerBase
         {
             return await HandleMscScoreEditModalAsync(root, parts, ct);
         }
+
+        if (parts.Length == 2 && parts[0] == "matching" && parts[1] == "create-modal")
+        {
+            return HandleMatchingCreateModalSubmit(root);
+        }
+
 
         if (parts.Length != 5 || parts[0] != "score" || parts[1] != "editsubmit")
         {
