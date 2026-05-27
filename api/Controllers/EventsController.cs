@@ -138,6 +138,8 @@ public class EventsController : ControllerBase
     [HttpGet("{id:int}/ranking")]
     public async Task<IActionResult> Ranking(int id, CancellationToken ct)
     {
+        // スコアと EX スコアは別々のプレーで自己ベストになることがあるため、
+        // それぞれ独立に MAX を採用する (同一投稿に縛らない)。
         const string sql = """
             WITH per_user AS (
                 SELECT
@@ -150,30 +152,48 @@ public class EventsController : ControllerBase
                 GROUP BY x_id
             ),
             best AS (
-                SELECT DISTINCT ON (x_id)
+                SELECT
                     x_id,
-                    submit_name,
-                    score,
-                    ex_score,
-                    submit_date
+                    MAX(score)    AS score,
+                    MAX(ex_score) AS ex_score
                 FROM weepa_scores
                 WHERE weepa_event_id = @EventId
                   AND approval_status = 1
-                ORDER BY x_id, score DESC, ex_score DESC NULLS LAST, submit_date ASC
+                GROUP BY x_id
+            ),
+            -- 表示名は最新投稿のものを採用 (改名にも追従)
+            name_pick AS (
+                SELECT DISTINCT ON (x_id)
+                    x_id, submit_name
+                FROM weepa_scores
+                WHERE weepa_event_id = @EventId
+                  AND approval_status = 1
+                ORDER BY x_id, submit_date DESC
+            ),
+            -- 自己ベストスコアに最初に到達した日時 (同点時の tie-break 用)
+            best_score_date AS (
+                SELECT s.x_id, MIN(s.submit_date) AS reached_date
+                FROM weepa_scores s
+                JOIN best b ON b.x_id = s.x_id AND b.score = s.score
+                WHERE s.weepa_event_id = @EventId
+                  AND s.approval_status = 1
+                GROUP BY s.x_id
             )
             SELECT
                 ROW_NUMBER() OVER (
-                    ORDER BY b.score DESC, b.ex_score DESC NULLS LAST, b.submit_date ASC
+                    ORDER BY b.score DESC, b.ex_score DESC NULLS LAST, d.reached_date ASC
                 )                  AS "Rank",
                 b.x_id              AS "XId",
-                b.submit_name       AS "SubmitName",
+                n.submit_name       AS "SubmitName",
                 b.score             AS "Score",
                 b.ex_score          AS "ExScore",
-                b.submit_date       AS "SubmitDate",
+                d.reached_date      AS "SubmitDate",
                 p.last_submit_date  AS "LastSubmitDate",
                 p.update_count      AS "UpdateCount"
             FROM best b
-            JOIN per_user p ON p.x_id = b.x_id
+            JOIN per_user p       ON p.x_id = b.x_id
+            JOIN name_pick n      ON n.x_id = b.x_id
+            JOIN best_score_date d ON d.x_id = b.x_id
             ORDER BY "Rank"
             """;
 
