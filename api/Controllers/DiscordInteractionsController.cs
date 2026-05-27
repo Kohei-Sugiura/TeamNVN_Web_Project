@@ -2072,6 +2072,12 @@ public class DiscordInteractionsController : ControllerBase
             return await HandleSongComponentAsync(root, op, songId, ct);
         }
 
+        if (domain == "songmax" && parts.Length >= 3 && int.TryParse(parts[2], out var smSongId))
+        {
+            int? estimatedMax = parts.Length >= 4 && int.TryParse(parts[3], out var em) ? em : null;
+            return await HandleSongMaxComponentAsync(root, op, smSongId, estimatedMax, ct);
+        }
+
         if (domain == "score" && parts.Length >= 5 &&
             int.TryParse(parts[2], out var eventId) &&
             int.TryParse(parts[4], out var submitId))
@@ -2118,6 +2124,60 @@ public class DiscordInteractionsController : ControllerBase
         }
 
         return await BuildUpdateMessageResponseAsync(root, resp, label, actor, ct);
+    }
+
+    private async Task<IActionResult> HandleSongMaxComponentAsync(
+        JsonElement root, string op, int songId, int? estimatedMax, CancellationToken ct)
+    {
+        if (op == "approve")
+        {
+            if (estimatedMax is null) return InvalidComponent("approve には推定値が必要です");
+            var resp = await _admin.SetSongExMaxAsync(songId, estimatedMax, ct);
+            return await BuildUpdateMessageResponseAsync(
+                root, resp, $"✅ 承認 (MAX = {estimatedMax})", ExtractActorName(root), ct);
+        }
+        if (op == "reject")
+        {
+            // 却下 = 何もせず ex_score_max は null のままにしておく
+            return await BuildUpdateMessageResponseAsync(
+                root, new HttpResponseMessage(System.Net.HttpStatusCode.OK),
+                "❌ 却下 (MAX 未確定のまま)", ExtractActorName(root), ct);
+        }
+        if (op == "edit")
+        {
+            // 修正用モーダル (TextInput で MAX 値を直接入力)
+            return Json(new
+            {
+                type = RESP_MODAL,
+                data = new
+                {
+                    custom_id = $"songmax:editsubmit:{songId}",
+                    title = "EX SCORE MAX 修正",
+                    components = new object[]
+                    {
+                        new
+                        {
+                            type = COMP_ACTION_ROW,
+                            components = new object[]
+                            {
+                                new
+                                {
+                                    type = COMP_TEXT_INPUT,
+                                    custom_id = "max",
+                                    label = "EX SCORE MAX (整数)",
+                                    style = TEXT_INPUT_SHORT,
+                                    min_length = 1,
+                                    max_length = 6,
+                                    required = true,
+                                    value = (estimatedMax ?? 0).ToString(),
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+        }
+        return InvalidComponent("未知の songmax op");
     }
 
     private async Task<IActionResult> HandleScoreComponentAsync(
@@ -2293,6 +2353,23 @@ public class DiscordInteractionsController : ControllerBase
         if (parts.Length == 2 && parts[0] == "matching" && parts[1] == "create-modal")
         {
             return HandleMatchingCreateModalSubmit(root);
+        }
+
+        if (parts.Length == 3 && parts[0] == "songmax" && parts[1] == "editsubmit"
+            && int.TryParse(parts[2], out var smSongId))
+        {
+            var smInputs = ParseModalInputs(root);
+            if (!smInputs.TryGetValue("max", out var maxStr) || !int.TryParse(maxStr, out var newMax))
+            {
+                return EphemeralMessage("MAX を整数で入力してください");
+            }
+            if (newMax is < 0 or > 100_000)
+            {
+                return EphemeralMessage("MAX は 0〜100000 の範囲です");
+            }
+            var smResp = await _admin.SetSongExMaxAsync(smSongId, newMax, ct);
+            return await BuildUpdateMessageResponseAsync(
+                root, smResp, $"✅ 承認 (MAX = {newMax}、修正済み)", ExtractActorName(root), ct);
         }
 
         if (parts.Length == 2 && parts[0] == "matching" && parts[1] == "change-mode-modal")

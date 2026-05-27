@@ -25,18 +25,21 @@ public class ScoresController : ControllerBase
     private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<ScoresController> _logger;
     private readonly IDiscordNotifier _discord;
+    private readonly ClaudeImageRecognitionService _claude;
 
     public ScoresController(
         NpgsqlDataSource dataSource,
         ILogger<ScoresController> logger,
-        IDiscordNotifier discord)
+        IDiscordNotifier discord,
+        ClaudeImageRecognitionService claude)
     {
         _dataSource = dataSource;
         _logger = logger;
         _discord = discord;
+        _claude = claude;
     }
 
-    private sealed record EventState(bool InPeriod, string Song, string Effect);
+    private sealed record EventState(bool InPeriod, string Song, string Effect, int WeepaSongId, int? ExScoreMax);
 
     [HttpPost]
     [RequestSizeLimit(25_000_000)]
@@ -81,8 +84,10 @@ public class ScoresController : ControllerBase
             new CommandDefinition("""
                 SELECT
                     (NOW() BETWEEN e.start_date AND e.end_date) AS "InPeriod",
-                    s.song   AS "Song",
-                    s.effect AS "Effect"
+                    s.song          AS "Song",
+                    s.effect        AS "Effect",
+                    s.weepa_song_id AS "WeepaSongId",
+                    s.ex_score_max  AS "ExScoreMax"
                 FROM weepa_events e
                 JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
                 WHERE e.weepa_event_id = @EventId
@@ -168,6 +173,37 @@ public class ScoresController : ControllerBase
             eventState.Effect,
             fullPath,
             image.ContentType));
+
+        // 楽曲の EX SCORE MAX 値が未確定なら、Claude でリザルト画像から逆算して
+        // 推定 → Discord 通知 (fire-and-forget)。
+        // - 画像内に MAX-N 表記が無い (%表記など) → result.EstimatedMax=null で何もしない
+        // - 推定できたら通知メッセージを出し、管理者が承認/修正で確定する
+        if (eventState.ExScoreMax is null && _claude.Enabled)
+        {
+            var capturedSongId = eventState.WeepaSongId;
+            var capturedSong = eventState.Song;
+            var capturedEffect = eventState.Effect;
+            var capturedPath = fullPath;
+            var capturedContentType = image.ContentType;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var bytes = await System.IO.File.ReadAllBytesAsync(capturedPath);
+                    var result = await _claude.EstimateExMaxAsync(bytes, capturedContentType, default);
+                    if (result.Success && result.EstimatedMax is int max)
+                    {
+                        await _discord.NotifySongExMaxEstimateAsync(
+                            new SongExMaxEstimateNotification(
+                                capturedSongId, capturedSong, capturedEffect, max));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "ex-max estimate dispatch failed");
+                }
+            });
+        }
 
         return Ok(new { message = "ok" });
     }

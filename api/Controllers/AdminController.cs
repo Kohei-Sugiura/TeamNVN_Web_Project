@@ -192,6 +192,63 @@ public class AdminController : ControllerBase
         return Ok(new { message = "ok" });
     }
 
+    /// <summary>
+    /// 楽曲の EX SCORE MAX 値を設定 (null 可。null を渡すと未確定状態に戻す)。
+    /// /admin/ から Web UI 経由でも、Discord 経由 (loopback) でも叩く。
+    /// </summary>
+    [HttpPost("songs/{id:int}/ex-max")]
+    public async Task<IActionResult> SetSongExMax(
+        int id,
+        [FromBody] SongExMaxRequest? request,
+        CancellationToken ct)
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        if (request is null) return BadRequest(new { message = "リクエストボディが必要です" });
+        if (request.ExScoreMax is < 0 or > 100_000)
+        {
+            return BadRequest(new { message = "ex_score_max は 0〜100000 の範囲です" });
+        }
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var affected = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE weepa_songs SET ex_score_max = @Max WHERE weepa_song_id = @Id",
+            new { Id = id, Max = request.ExScoreMax },
+            cancellationToken: ct));
+
+        if (affected == 0)
+        {
+            return NotFound(new { message = "対象楽曲が見つかりません" });
+        }
+        return Ok(new { message = "ok", exScoreMax = request.ExScoreMax });
+    }
+
+    /// <summary>
+    /// MAX 値未設定 (= ex_score_max IS NULL) かつ承認済楽曲の一覧。
+    /// </summary>
+    [HttpGet("songs/ex-max/pending")]
+    public async Task<IActionResult> SongsPendingExMax(CancellationToken ct)
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var rows = await conn.QueryAsync<dynamic>(new CommandDefinition(
+            """
+            SELECT weepa_song_id AS "weepaSongId",
+                   song          AS "song",
+                   effect        AS "effect",
+                   submit_name   AS "submitName"
+            FROM weepa_songs
+            WHERE ex_score_max IS NULL
+              AND approval_status = 1
+            ORDER BY weepa_song_id ASC
+            """,
+            cancellationToken: ct));
+        return Ok(rows);
+    }
+
     [HttpGet("scores/pending")]
     public async Task<IActionResult> PendingScores(CancellationToken ct)
     {

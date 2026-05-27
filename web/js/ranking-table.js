@@ -1,6 +1,7 @@
 // 個別イベントのランキングテーブル共通レンダラ。
 // /weepa/ranking/ (公開) と /admin/preview/ (管理者) で同じ見た目を共有する。
-// グローバル window.renderRankingTable(targetEl, entries) を提供。
+// グローバル window.renderRankingTable(targetEl, entries, options) を提供。
+// options.exScoreMax: 楽曲の EX SCORE MAX 値 (null なら従来表記)。
 
 (function () {
   function escapeHtml(s) {
@@ -10,6 +11,21 @@
   }
   function formatScore(n) {
     return Number(n).toLocaleString('en-US');
+  }
+  // EX SCORE 表示:
+  // - max が無い: 数値のみ (従来通り)
+  // - 98% 以上: "5950 (MAX -50)"
+  // - 98% 未満: "5857 (97.6%)" (小数点 1 桁まで切り捨て)
+  function formatExScoreCell(ex, max) {
+    if (ex == null) return '-';
+    if (max == null || max <= 0) return formatScore(ex);
+    const ratio = ex / max;
+    if (ratio >= 0.98) {
+      const diff = max - ex;
+      return `${formatScore(ex)} <span class="ex-max-tag">(MAX -${diff})</span>`;
+    }
+    const pct = Math.floor(ratio * 1000) / 10; // 小数 1 桁切り捨て
+    return `${formatScore(ex)} <span class="ex-max-tag">(${pct.toFixed(1)}%)</span>`;
   }
   function formatDate(iso) {
     const d = new Date(iso);
@@ -39,11 +55,12 @@
     return dir === 'asc' ? cmp : -cmp;
   }
 
-  window.renderRankingTable = function (targetEl, entries) {
+  window.renderRankingTable = function (targetEl, entries, options) {
     if (!entries || entries.length === 0) {
       targetEl.innerHTML = '<p class="empty">まだランキングがありません。</p>';
       return;
     }
+    const exScoreMax = options && Number.isFinite(options.exScoreMax) ? options.exScoreMax : null;
     // デフォルト: EXスコア → スコア → 投稿日 (rank tie-break が後段を担保)
     const state = { sortKey: 'exScore', sortDir: 'desc' };
 
@@ -64,7 +81,7 @@
         <tr>
           <td class="name">${escapeHtml(e.submitName)}</td>
           <td class="${scoreClass}">${formatScore(e.score)}</td>
-          <td class="ex">${e.exScore != null ? formatScore(e.exScore) : '-'}</td>
+          <td class="ex">${formatExScoreCell(e.exScore, exScoreMax)}</td>
           <td class="last-submit">${escapeHtml(formatDate(e.lastSubmitDate))}</td>
           <td class="update-count">${e.updateCount}</td>
         </tr>

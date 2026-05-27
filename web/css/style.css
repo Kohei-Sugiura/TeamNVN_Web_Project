@@ -876,6 +876,13 @@ span.effect.effect-ult {
   color: #9090b0;
 }
 
+/* "MAX -N" / "(97.6%)" 等の補助表示 */
+.ranking-table .ex-max-tag {
+  margin-left: 4px;
+  font-size: 0.85em;
+  color: #6f6f8a;
+}
+
 .ranking-table .status-cell {
   text-align: center;
   white-space: nowrap;

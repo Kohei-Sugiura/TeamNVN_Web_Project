@@ -28,9 +28,9 @@ function renderEventHeader(ev) {
   `;
 }
 
-function renderRanking(entries) {
+function renderRanking(entries, ev) {
   rankingSection.hidden = false;
-  renderRankingTable(rankingDisplay, entries);
+  renderRankingTable(rankingDisplay, entries, { exScoreMax: ev?.exScoreMax });
 }
 
 function showEventError(message) {
@@ -84,7 +84,7 @@ async function showEventRanking(eventId) {
     const rankRes = await fetch(`/api/events/${eventId}/ranking`);
     if (!rankRes.ok) throw new Error(`HTTP ${rankRes.status}`);
     const entries = await rankRes.json();
-    renderRanking(entries);
+    renderRanking(entries, ev);
   } catch (err) {
     showEventError(`情報の取得に失敗しました: ${err.message}`);
   }

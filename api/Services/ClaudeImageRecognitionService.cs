@@ -2,10 +2,19 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
 
 namespace Weepa.Api.Services;
 
 public sealed record ScoreRecognitionResult(bool Success, int? Score, int? ExScore, string? Error);
+
+/// <summary>EX SCORE MAX 値推定の結果。Success=true で ExScore/MaxDiff のどちらかが null の場合は「推定不能」。</summary>
+public sealed record ExMaxEstimateResult(bool Success, int? ExScore, int? MaxDiff, string? Error)
+{
+    public int? EstimatedMax => (ExScore.HasValue && MaxDiff.HasValue) ? ExScore + MaxDiff : null;
+}
 
 /// <summary>
 /// Claude (Anthropic) vision API でリザルト画像から SCORE / EX SCORE を抽出する。
@@ -48,17 +57,74 @@ public sealed class ClaudeImageRecognitionService
         string contentType,
         CancellationToken ct)
     {
+        var systemPrompt = _config["Anthropic:SystemPrompt"] ?? "";
+        var userPrompt = _config["Anthropic:UserPrompt"] ?? "";
+        return await CallClaudeAsync(imageBytes, contentType, systemPrompt, userPrompt, ParseResponse, ct);
+    }
+
+    public async Task<ExMaxEstimateResult> EstimateExMaxAsync(
+        byte[] imageBytes,
+        string contentType,
+        CancellationToken ct)
+    {
         if (!Enabled)
         {
-            return new ScoreRecognitionResult(false, null, null,
+            return new ExMaxEstimateResult(false, null, null,
                 "画像認識機能が無効です (ANTHROPIC_API_KEY 未設定)");
+        }
+
+        // Anthropic API は base64 で 5MB 上限。スマホ撮影画像 (10MB 超) は弾かれるので
+        // 長辺 1600px / JPEG 0.85 にリサイズして送る (認識精度には十分)。
+        try
+        {
+            (imageBytes, contentType) = await ShrinkIfNeededAsync(imageBytes, contentType, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "shrink image for ex-max estimate failed");
+        }
+
+        var systemPrompt = _config["Anthropic:ExMaxSystemPrompt"] ?? "";
+        var userPrompt = _config["Anthropic:ExMaxUserPrompt"] ?? "";
+
+        // ScoreRecognitionResult をラッパーとして借用しつつ Body だけ別パースさせるため、
+        // 内部で素の JSON body をハンドリングする小さな ParseExMax を渡す
+        var result = await CallClaudeAsync<ExMaxEstimateResult>(
+            imageBytes, contentType, systemPrompt, userPrompt,
+            body => ParseExMaxResponse(body),
+            ct,
+            errorFactory: e => new ExMaxEstimateResult(false, null, null, e));
+        return result;
+    }
+
+    private async Task<ScoreRecognitionResult> CallClaudeAsync(
+        byte[] imageBytes, string contentType,
+        string systemPrompt, string userPrompt,
+        Func<string, ScoreRecognitionResult> parser,
+        CancellationToken ct)
+        => await CallClaudeAsync<ScoreRecognitionResult>(
+            imageBytes, contentType, systemPrompt, userPrompt, parser, ct,
+            errorFactory: e => new ScoreRecognitionResult(false, null, null, e));
+
+    /// <summary>
+    /// Claude vision API への共通呼び出し。レスポンス body を parser に渡してドメイン固有の
+    /// 結果型を返す。失敗時は errorFactory で同型の結果を作る。
+    /// </summary>
+    private async Task<T> CallClaudeAsync<T>(
+        byte[] imageBytes, string contentType,
+        string systemPrompt, string userPrompt,
+        Func<string, T> parser,
+        CancellationToken ct,
+        Func<string, T> errorFactory)
+    {
+        if (!Enabled)
+        {
+            return errorFactory("画像認識機能が無効です (ANTHROPIC_API_KEY 未設定)");
         }
 
         var url = _config["Anthropic:ApiUrl"] ?? "https://api.anthropic.com/v1/messages";
         var model = _config["Anthropic:Model"] ?? "claude-haiku-4-5-20251001";
         var maxTokens = _config.GetValue<int?>("Anthropic:MaxTokens") ?? 256;
-        var systemPrompt = _config["Anthropic:SystemPrompt"] ?? "";
-        var userPrompt = _config["Anthropic:UserPrompt"] ?? "";
 
         var content = new List<object>
         {
@@ -120,11 +186,10 @@ public sealed class ClaudeImageRecognitionService
                     _logger.LogWarning(
                         "Anthropic API error {Status}: {Body}",
                         (int)resp.StatusCode, Truncate(body, 500));
-                    return new ScoreRecognitionResult(false, null, null,
-                        $"画像認識 API でエラーが発生しました ({(int)resp.StatusCode})");
+                    return errorFactory($"画像認識 API でエラーが発生しました ({(int)resp.StatusCode})");
                 }
 
-                return ParseResponse(body);
+                return parser(body);
             }
             catch (TaskCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -140,8 +205,46 @@ public sealed class ClaudeImageRecognitionService
             }
         }
 
-        return new ScoreRecognitionResult(false, null, null,
-            $"画像認識 API への接続に失敗しました: {lastEx?.Message ?? "unknown"}");
+        return errorFactory($"画像認識 API への接続に失敗しました: {lastEx?.Message ?? "unknown"}");
+    }
+
+    private ExMaxEstimateResult ParseExMaxResponse(string body)
+    {
+        string? text;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var content = doc.RootElement.GetProperty("content");
+            if (content.ValueKind != JsonValueKind.Array || content.GetArrayLength() == 0)
+                return new ExMaxEstimateResult(false, null, null, "画像認識結果が空でした");
+            text = content[0].GetProperty("text").GetString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Anthropic ex-max response shape unexpected: {Body}", Truncate(body, 500));
+            return new ExMaxEstimateResult(false, null, null, "画像認識結果のパースに失敗しました");
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+            return new ExMaxEstimateResult(false, null, null, "画像認識結果が空でした");
+
+        var cleaned = StripCodeFence(text).Trim();
+        try
+        {
+            using var doc = JsonDocument.Parse(cleaned);
+            var root = doc.RootElement;
+            var ex = TryReadNullableInt(root, "ex_score");
+            var diff = TryReadNullableInt(root, "max_diff");
+            // 値域チェック
+            if (ex is < 0 or > 100_000) ex = null;
+            if (diff is < 0 or > 100_000) diff = null;
+            return new ExMaxEstimateResult(true, ex, diff, null);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "ex-max JSON parse failed: {Text}", Truncate(cleaned, 200));
+            return new ExMaxEstimateResult(false, null, null, "推定結果の JSON パースに失敗しました");
+        }
     }
 
     private ScoreRecognitionResult ParseResponse(string body)
@@ -212,6 +315,31 @@ public sealed class ClaudeImageRecognitionService
         if (v.ValueKind == JsonValueKind.String &&
             int.TryParse(v.GetString(), out var s)) return s;
         return null;
+    }
+
+    /// <summary>
+    /// 4MB 超または長辺 1600px 超の画像を長辺 1600px / JPEG 0.85 にリサイズして返す。
+    /// Anthropic vision API の 5MB 制限を回避するため。
+    /// </summary>
+    private static async Task<(byte[] Bytes, string ContentType)> ShrinkIfNeededAsync(
+        byte[] input, string contentType, CancellationToken ct)
+    {
+        // 4MB 未満なら何もしない (Anthropic 5MB 制限に十分余裕)
+        if (input.Length < 4 * 1024 * 1024) return (input, contentType);
+
+        using var image = Image.Load(input);
+        const int maxDim = 1600;
+        if (image.Width > maxDim || image.Height > maxDim)
+        {
+            image.Mutate(x => x.Resize(new ResizeOptions
+            {
+                Mode = ResizeMode.Max,
+                Size = new SixLabors.ImageSharp.Size(maxDim, maxDim),
+            }));
+        }
+        await using var ms = new MemoryStream();
+        await image.SaveAsJpegAsync(ms, new JpegEncoder { Quality = 85 }, ct);
+        return (ms.ToArray(), "image/jpeg");
     }
 
     private static readonly Regex CodeFenceRegex = new(

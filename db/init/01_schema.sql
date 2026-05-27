@@ -26,7 +26,10 @@ CREATE TABLE weepa_songs (
     submit_name     TEXT NOT NULL,
     submit_reason   TEXT,
     submit_date     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    approval_status SMALLINT NOT NULL DEFAULT 0
+    approval_status SMALLINT NOT NULL DEFAULT 0,
+    -- EX SCORE の MAX 値 (リザルト画像の MAX-N 表記から逆算)。
+    -- 未確定なら NULL。確定すると以降のランキングで MAX-N / % 表示に使う。
+    ex_score_max    INTEGER
 );
 
 -- ============================================

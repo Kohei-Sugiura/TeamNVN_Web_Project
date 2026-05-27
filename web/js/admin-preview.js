@@ -29,9 +29,9 @@ function renderEventHeader(ev) {
     publishStatusEl.className = `result ${published ? 'ok' : 'info'}`;
 }
 
-function renderRanking(entries) {
+function renderRanking(entries, ev) {
     rankingSection.hidden = false;
-    renderRankingTable(rankingDisplay, entries);
+    renderRankingTable(rankingDisplay, entries, { exScoreMax: ev?.exScoreMax });
 }
 
 function showError(message) {
@@ -56,7 +56,7 @@ function showError(message) {
             return;
         }
         renderEventHeader(ev);
-        renderRanking(ranking);
+        renderRanking(ranking, ev);
     } catch (err) {
         if (err.message === 'AUTH_REDIRECT') return;
         showError(`取得に失敗しました: ${err.message}`);

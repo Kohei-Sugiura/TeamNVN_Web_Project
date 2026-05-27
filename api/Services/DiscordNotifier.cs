@@ -42,11 +42,18 @@ public sealed record MscPlaySummary(int PlayOrder, int SongOrder, int Score, str
 // PlayOrder 0 = 通しリザルト (summary)、1..4 = 各 Track のリザルト
 public sealed record MscSubmissionImageRef(int PlayOrder, string Path, string ContentType);
 
+public sealed record SongExMaxEstimateNotification(
+    int WeepaSongId,
+    string Song,
+    string Effect,
+    int EstimatedMax);
+
 public interface IDiscordNotifier
 {
     Task NotifySongSubmittedAsync(SongSubmittedNotification n, CancellationToken ct = default);
     Task NotifyScoreSubmittedAsync(ScoreSubmittedNotification n, CancellationToken ct = default);
     Task NotifyMscScoreSubmittedAsync(MscScoreSubmittedNotification n, CancellationToken ct = default);
+    Task NotifySongExMaxEstimateAsync(SongExMaxEstimateNotification n, CancellationToken ct = default);
 }
 
 internal sealed class DiscordNotifier : IDiscordNotifier
@@ -319,6 +326,55 @@ internal sealed class DiscordNotifier : IDiscordNotifier
         finally
         {
             foreach (var s in openStreams) s.Dispose();
+        }
+    }
+
+    public async Task NotifySongExMaxEstimateAsync(
+        SongExMaxEstimateNotification n,
+        CancellationToken ct = default)
+    {
+        if (!_enabled) return;
+
+        var payload = new
+        {
+            embeds = new[]
+            {
+                new
+                {
+                    title = $"🎯 EX SCORE MAX 推定 #{n.WeepaSongId}",
+                    color = 0x00e5ff,
+                    fields = new object[]
+                    {
+                        new { name = "楽曲", value = Truncate(n.Song, 1024), inline = true },
+                        new { name = "譜面", value = n.Effect, inline = true },
+                        new { name = "推定 MAX", value = n.EstimatedMax.ToString("N0", CultureInfo.InvariantCulture), inline = false },
+                    },
+                },
+            },
+            components = new[]
+            {
+                new
+                {
+                    type = 1,
+                    components = new object[]
+                    {
+                        new { type = 2, style = 3, label = "承認", custom_id = $"songmax:approve:{n.WeepaSongId}:{n.EstimatedMax}" },
+                        new { type = 2, style = 4, label = "却下", custom_id = $"songmax:reject:{n.WeepaSongId}" },
+                        new { type = 2, style = 1, label = "修正", custom_id = $"songmax:edit:{n.WeepaSongId}:{n.EstimatedMax}" },
+                    },
+                },
+            },
+        };
+
+        try
+        {
+            using var resp = await _http.PostAsJsonAsync(
+                $"channels/{_channelId}/messages", payload, ct);
+            await LogIfFailureAsync(resp, "song ex-max notify", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Discord song ex-max notify failed");
         }
     }
 

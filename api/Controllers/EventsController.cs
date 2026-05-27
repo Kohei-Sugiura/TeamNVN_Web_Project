@@ -34,7 +34,8 @@ public class EventsController : ControllerBase
                 e.end_date       AS "EndDate",
                 e.tallied_at     AS "TalliedAt",
                 s.submit_name    AS "SubmitName",
-                s.submit_reason  AS "SubmitReason"
+                s.submit_reason  AS "SubmitReason",
+                s.ex_score_max   AS "ExScoreMax"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             ORDER BY e.start_date DESC
@@ -61,7 +62,8 @@ public class EventsController : ControllerBase
                 e.end_date       AS "EndDate",
                 e.tallied_at     AS "TalliedAt",
                 s.submit_name    AS "SubmitName",
-                s.submit_reason  AS "SubmitReason"
+                s.submit_reason  AS "SubmitReason",
+                s.ex_score_max   AS "ExScoreMax"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE e.end_date < NOW()
@@ -88,7 +90,8 @@ public class EventsController : ControllerBase
                 e.end_date       AS "EndDate",
                 e.tallied_at     AS "TalliedAt",
                 s.submit_name    AS "SubmitName",
-                s.submit_reason  AS "SubmitReason"
+                s.submit_reason  AS "SubmitReason",
+                s.ex_score_max   AS "ExScoreMax"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE NOW() BETWEEN e.start_date AND e.end_date
@@ -116,7 +119,8 @@ public class EventsController : ControllerBase
                 e.end_date       AS "EndDate",
                 e.tallied_at     AS "TalliedAt",
                 s.submit_name    AS "SubmitName",
-                s.submit_reason  AS "SubmitReason"
+                s.submit_reason  AS "SubmitReason",
+                s.ex_score_max   AS "ExScoreMax"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE e.weepa_event_id = @Id

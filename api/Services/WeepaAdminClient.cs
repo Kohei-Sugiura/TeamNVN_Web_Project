@@ -26,6 +26,9 @@ public sealed class WeepaAdminClient
     public Task<HttpResponseMessage> ApproveSongAsync(int id, CancellationToken ct) =>
         _http.PostAsync($"/api/admin/songs/{id}/approve", null, ct);
 
+    public Task<HttpResponseMessage> SetSongExMaxAsync(int id, int? exScoreMax, CancellationToken ct) =>
+        _http.PostAsJsonAsync($"/api/admin/songs/{id}/ex-max", new { exScoreMax }, ct);
+
     public Task<HttpResponseMessage> RejectSongAsync(int id, CancellationToken ct) =>
         _http.PostAsync($"/api/admin/songs/{id}/reject", null, ct);
 
