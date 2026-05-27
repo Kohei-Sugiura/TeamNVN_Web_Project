@@ -23,31 +23,33 @@
     <main class="container">
         <header class="site-header">
             <h1><a href="/"><img class="site-header-logo" src="/image/TeamNVN_icon.png" alt=""><span class="site-header-name">Team NVN</span></a></h1>
-            <p class="subtitle">SOUND VOLTEX 交流チーム</p>
+            <p class="subtitle" data-i18n="site.subtitle">SOUND VOLTEX 交流チーム</p>
         </header>
-        <h1>ムンチャレ 集計結果</h1>
+        <h1 data-i18n="msc.title.ranking">ムンチャレ 集計結果</h1>
 
         <section id="event-section" class="event-card" hidden>
             <div id="event-display" class="event-display">
-                <p class="loading">読み込み中...</p>
+                <p class="loading" data-i18n="common.loading">読み込み中...</p>
             </div>
         </section>
 
         <section id="ranking-section" class="ranking-section" hidden>
-            <h2>ランキング</h2>
+            <h2 data-i18n="ranking.section.ranking">ランキング</h2>
             <div id="ranking-display">
-                <p class="loading">読み込み中...</p>
+                <p class="loading" data-i18n="common.loading">読み込み中...</p>
             </div>
         </section>
 
         <section id="past-section" class="ranking-section" hidden>
-            <h2>集計済みイベント</h2>
+            <h2 data-i18n="ranking.section.past">集計済みイベント</h2>
             <div id="past-display">
-                <p class="loading">読み込み中...</p>
+                <p class="loading" data-i18n="common.loading">読み込み中...</p>
             </div>
         </section>
     </main>
 
+    <script src="/js/i18n-dict.js"></script>
+    <script src="/js/i18n.js"></script>
     <script src="/js/msc-ranking-table.js"></script>
     <script src="/js/msc-ranking.js"></script>
 </body>

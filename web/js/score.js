@@ -32,6 +32,13 @@ function escapeHtml(s) {
   }[c]));
 }
 
+function tt(key) {
+  return (window.i18n && window.i18n.t) ? window.i18n.t(key) : key;
+}
+function lurl(href) {
+  return (window.i18n && window.i18n.localLink) ? window.i18n.localLink(href) : href;
+}
+
 function formatDate(iso) {
   const d = new Date(iso);
   return d.toLocaleString('ja-JP', {
@@ -86,7 +93,7 @@ function renderEventHeader(ev) {
       <span class="song">${escapeHtml(ev.song)}</span>
       <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
     </div>
-    <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatDate(ev.startDate))} ～ ${escapeHtml(formatDate(ev.endDate))}</p>
+    <p class="info-row"><span class="label">${tt('weepa.label.period')}</span>${escapeHtml(formatDate(ev.startDate))} ～ ${escapeHtml(formatDate(ev.endDate))}</p>
   `;
 }
 
@@ -104,7 +111,7 @@ let currentEventId = null;
     let ev;
     if (eventId && /^\d+$/.test(eventId)) {
       const res = await fetch(`/api/events/${eventId}`);
-      if (res.status === 404) { showEventError('指定されたイベントは存在しません。'); return; }
+      if (res.status === 404) { showEventError(tt('weepa.score.event.not-found')); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       ev = await res.json();
     } else {
@@ -114,13 +121,13 @@ let currentEventId = null;
       const body = await res.json();
       ev = body.event;
       if (ev) {
-        window.location.replace(`/weepa/score/?eventId=${encodeURIComponent(ev.weepaEventId)}`);
+        window.location.replace(lurl(`/weepa/score/?eventId=${encodeURIComponent(ev.weepaEventId)}`));
         return;
       }
     }
 
     if (!ev) {
-      showEventError('現在開催中のイベントはありません。');
+      showEventError(tt('weepa.score.event.no-current'));
       return;
     }
 
@@ -128,11 +135,11 @@ let currentEventId = null;
     const start = new Date(ev.startDate).getTime();
     const end = new Date(ev.endDate).getTime();
     if (now < start) {
-      showEventError('このイベントはまだ開始していません。');
+      showEventError(tt('weepa.score.event.not-yet'));
       return;
     }
     if (now > end) {
-      showEventError('このイベントは既に終了しています。');
+      showEventError(tt('weepa.score.event.ended'));
       return;
     }
 
@@ -140,7 +147,7 @@ let currentEventId = null;
     renderEventHeader(ev);
     form.hidden = false;
   } catch (err) {
-    showEventError(`情報の取得に失敗しました: ${err.message}`);
+    showEventError(`${tt('common.error.fetch')}: ${err.message}`);
   }
 })();
 
@@ -155,20 +162,22 @@ function getFormSnapshot() {
 }
 
 function renderConfirm(snap) {
+  const empty = `<span class="muted">${tt('common.muted.empty')}</span>`;
+  const none = `<span class="muted">${tt('common.muted.none')}</span>`;
+  const unsel = `<span class="muted">${tt('common.muted.unselected')}</span>`;
+  const loading = `<span class="muted">${tt('common.muted.preview-loading')}</span>`;
   confirmBody.innerHTML = `
     <dl>
-      <dt>X (Twitter) ID</dt>
-      <dd>${snap.xId ? escapeHtml(snap.xId) : '<span class="muted">(未入力)</span>'}</dd>
-      <dt>投稿者名</dt>
-      <dd>${snap.submitName ? escapeHtml(snap.submitName) : '<span class="muted">(未入力)</span>'}</dd>
-      <dt>スコア</dt>
-      <dd>${snap.score !== '' ? escapeHtml(formatNum(snap.score)) : '<span class="muted">(未入力)</span>'}</dd>
-      <dt>EXスコア</dt>
-      <dd>${snap.exScore !== '' ? escapeHtml(formatNum(snap.exScore)) : '<span class="muted">(なし)</span>'}</dd>
-      <dt>リザルト画像</dt>
-      <dd id="confirm-image-slot">${snap.imageFile
-        ? `<span class="muted">読み込み中...</span>`
-        : '<span class="muted">(未選択)</span>'}</dd>
+      <dt>${tt('weepa.score.field.xid')}</dt>
+      <dd>${snap.xId ? escapeHtml(snap.xId) : empty}</dd>
+      <dt>${tt('weepa.score.field.name')}</dt>
+      <dd>${snap.submitName ? escapeHtml(snap.submitName) : empty}</dd>
+      <dt>${tt('weepa.score.field.score')}</dt>
+      <dd>${snap.score !== '' ? escapeHtml(formatNum(snap.score)) : empty}</dd>
+      <dt>${tt('weepa.score.field.exscore')}</dt>
+      <dd>${snap.exScore !== '' ? escapeHtml(formatNum(snap.exScore)) : none}</dd>
+      <dt>${tt('weepa.score.field.image')}</dt>
+      <dd id="confirm-image-slot">${snap.imageFile ? loading : unsel}</dd>
     </dl>
   `;
 
@@ -177,11 +186,11 @@ function renderConfirm(snap) {
     reader.onload = () => {
       const slot = document.getElementById('confirm-image-slot');
       if (!slot) return;
-      slot.innerHTML = `<img class="preview" alt="リザルト画像プレビュー" src="${reader.result}">`;
+      slot.innerHTML = `<img class="preview" alt="${tt('weepa.score.preview.alt')}" src="${reader.result}">`;
     };
     reader.onerror = () => {
       const slot = document.getElementById('confirm-image-slot');
-      if (slot) slot.innerHTML = '<span class="muted">プレビュー生成失敗</span>';
+      if (slot) slot.innerHTML = `<span class="muted">${tt('common.muted.preview-fail')}</span>`;
     };
     reader.readAsDataURL(snap.imageFile);
   }
@@ -202,7 +211,7 @@ async function actuallySubmit(snap) {
   }
 
   btn.disabled = true;
-  resultEl.textContent = '送信中...';
+  resultEl.textContent = tt('common.error.sending');
   resultEl.className = 'result info';
 
   try {
@@ -212,7 +221,7 @@ async function actuallySubmit(snap) {
     });
 
     if (res.ok) {
-      resultEl.textContent = '✓ 投稿を受け付けました。ありがとうございます。';
+      resultEl.textContent = tt('weepa.score.submit.ok');
       resultEl.className = 'result ok';
       saveUserProfile({ xId: snap.xId, submitName: snap.submitName });
       form.reset();
@@ -222,19 +231,18 @@ async function actuallySubmit(snap) {
     } else if (res.status === 400) {
       const data = await res.json().catch(() => ({}));
       mapServerErrors(data.errors);
-      resultEl.textContent = data.message
-        ?? '入力内容にエラーがあります。各項目の赤字メッセージをご確認ください。';
+      resultEl.textContent = data.message ?? tt('common.error.validation');
       resultEl.className = 'result ng';
       scrollToFirstError();
     } else if (res.status === 413) {
-      resultEl.textContent = '画像サイズが大きすぎます (上限 20 MB)。';
+      resultEl.textContent = tt('weepa.score.submit.413');
       resultEl.className = 'result ng';
     } else {
-      resultEl.textContent = `送信に失敗しました (HTTP ${res.status})。時間をおいて再度お試しください。`;
+      resultEl.textContent = `${tt('common.error.send')} (HTTP ${res.status})`;
       resultEl.className = 'result ng';
     }
   } catch (err) {
-    resultEl.textContent = `通信エラー: ${err.message}`;
+    resultEl.textContent = `${tt('common.error.network')}: ${err.message}`;
     resultEl.className = 'result ng';
   } finally {
     btn.disabled = false;
@@ -262,7 +270,7 @@ async function shrinkImageForRecognize(file) {
     const img = await new Promise((resolve, reject) => {
       const im = new Image();
       im.onload = () => resolve(im);
-      im.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+      im.onerror = () => reject(new Error(tt('weepa.score.recognize.image-load-fail')));
       im.src = url;
     });
     const ratio = Math.min(1, MAX_DIM / Math.max(img.naturalWidth, img.naturalHeight));
@@ -296,7 +304,7 @@ async function recognizeFromImage(file) {
     toSend = await shrinkImageForRecognize(file);
   } catch (err) {
     recognizeDialog?.close();
-    setRecognizeStatus(`画像の事前処理に失敗: ${err.message}`, 'ng');
+    setRecognizeStatus(`${tt('weepa.score.recognize.preprocess-fail')}: ${err.message}`, 'ng');
     return;
   }
   const fd = new FormData();
@@ -304,7 +312,7 @@ async function recognizeFromImage(file) {
   try {
     const res = await fetch('/api/score/recognize', { method: 'POST', body: fd });
     if (res.status === 429) {
-      setRecognizeStatus('画像認識のリクエストが集中しています。少し時間をおいてから再度お試しください。', 'ng');
+      setRecognizeStatus(tt('weepa.score.recognize.too-many'), 'ng');
       return;
     }
     if (res.status === 503) {
@@ -315,7 +323,7 @@ async function recognizeFromImage(file) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) {
       setRecognizeStatus(
-        `自動入力に失敗しました: ${data.error || `HTTP ${res.status}`}。手入力してください。`,
+        `${tt('weepa.score.recognize.fail-prefix')}: ${data.error || `HTTP ${res.status}`}。${tt('weepa.score.recognize.fail-suffix')}`,
         'ng');
       return;
     }
@@ -329,13 +337,12 @@ async function recognizeFromImage(file) {
       filled.push(`EX = ${Number(data.exScore).toLocaleString('en-US')}`);
     }
     if (filled.length) {
-      setRecognizeStatus(`✓ 自動入力しました (${filled.join(' / ')})。値を確認してください。`, 'ok');
+      setRecognizeStatus(`${tt('weepa.score.recognize.filled-prefix')} (${filled.join(' / ')})。${tt('weepa.score.recognize.filled-suffix')}`, 'ok');
     } else {
-      setRecognizeStatus(
-        '画像からスコアを読み取れませんでした。手入力してください。', 'ng');
+      setRecognizeStatus(tt('weepa.score.recognize.no-read'), 'ng');
     }
   } catch (err) {
-    setRecognizeStatus(`通信エラー: ${err.message}`, 'ng');
+    setRecognizeStatus(`${tt('common.error.network')}: ${err.message}`, 'ng');
   } finally {
     recognizeDialog?.close();
   }

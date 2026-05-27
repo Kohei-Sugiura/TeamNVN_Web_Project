@@ -20,6 +20,8 @@
     });
   }
 
+  const tt = (k) => (window.i18n && window.i18n.t) ? window.i18n.t(k) : k;
+
   // tie-break は API 側 rank (合計 DESC, submit_date ASC で算出済) を使う
   function compareEntries(a, b, getValue, dir, defaultCmp) {
     const av = getValue(a);
@@ -33,7 +35,7 @@
 
   window.renderMscRankingTable = function (targetEl, entries, songs) {
     if (!entries || entries.length === 0) {
-      targetEl.innerHTML = '<p class="empty">まだランキングがありません。</p>';
+      targetEl.innerHTML = `<p class="empty">${tt('common.empty.ranking')}</p>`;
       return;
     }
     const songList = [...(songs || [])].sort((a, b) => a.songOrder - b.songOrder);
@@ -97,11 +99,11 @@
           <table class="ranking-table ranking-detail-table sortable-table">
             <thead>
               <tr>
-                <th class="sortable" data-sort="name">投稿者名${indicator('name')}</th>
+                <th class="sortable" data-sort="name">${tt('ranking.col.name')}${indicator('name')}</th>
                 ${songHeaders}
-                <th class="sortable" data-sort="total">合計スコア${indicator('total')}</th>
-                <th class="sortable" data-sort="lastSubmitDate">最終投稿日時${indicator('lastSubmitDate')}</th>
-                <th class="sortable" data-sort="submissionCount">投稿回数${indicator('submissionCount')}</th>
+                <th class="sortable" data-sort="total">${tt('msc.col.total-score')}${indicator('total')}</th>
+                <th class="sortable" data-sort="lastSubmitDate">${tt('ranking.col.last-submit')}${indicator('lastSubmitDate')}</th>
+                <th class="sortable" data-sort="submissionCount">${tt('msc.col.submission')}${indicator('submissionCount')}</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>

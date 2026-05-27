@@ -13,6 +13,8 @@ const btn = document.getElementById('submit-btn');
 const fieldKeys = ['xId', 'submitName', 'platform', 'plays', 'image'];
 const MAX_PLAYS = 4;
 
+const tt = (k) => (window.i18n && window.i18n.t) ? window.i18n.t(k) : k;
+
 let currentEvent = null;
 let songCount = 0;
 
@@ -76,8 +78,8 @@ function renderEventHeader(ev) {
     .join('<br>');
   eventDisplay.innerHTML = `
     <h2 class="msc-event-title">${escapeHtml(ev.title)}</h2>
-    <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
-    <p class="info-row"><span class="label">課題曲</span>${songLines}</p>
+    <p class="info-row"><span class="label">${tt('msc.score.label.period')}</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
+    <p class="info-row"><span class="label">${tt('msc.score.label.tracks')}</span>${songLines}</p>
   `;
 }
 function showEventError(message) {
@@ -92,7 +94,7 @@ function songBadgeHtml(song, effect) {
 function scoreFieldHtml(playOrder, disabled = false) {
   return `
     <div class="field msc-play-score-field">
-      <label for="msc-score-${playOrder}">スコア <span class="required">*</span></label>
+      <label for="msc-score-${playOrder}">${tt('msc.score.label.score')} <span class="required">*</span></label>
       <input type="number" id="msc-score-${playOrder}" name="score"
              min="0" max="10000000" step="1" inputmode="numeric"
              placeholder="0 〜 10,000,000"${disabled ? ' disabled' : ''}>
@@ -102,12 +104,13 @@ function scoreFieldHtml(playOrder, disabled = false) {
 }
 
 function imageFieldHtml(playOrder, required = false) {
+  const label = required ? `${tt('msc.score.image.required')} <span class="required">*</span>` : tt('msc.score.image.optional');
   return `
     <div class="field msc-play-image-field">
-      <label for="msc-image-${playOrder}">リザルト画像${required ? ' <span class="required">*</span>' : ' (任意)'}</label>
+      <label for="msc-image-${playOrder}">${label}</label>
       <input type="file" id="msc-image-${playOrder}" name="imagePlay${playOrder}"
              accept="image/jpeg,image/png,image/webp,image/*">
-      <p class="hint">JPEG / PNG / WebP、最大 20 MB</p>
+      <p class="hint">${tt('msc.score.image.hint')}</p>
       <p class="error" data-for="image-play-${playOrder}"></p>
     </div>
   `;
@@ -119,7 +122,7 @@ function renderMandatoryRow(playOrder) {
     <div class="msc-play-row" data-play-order="${playOrder}" data-mandatory="true">
       <div class="msc-play-header">
         <span class="msc-play-track-name">${trackLabel(playOrder)}</span>
-        <span class="msc-mandatory-tag">指定楽曲</span>
+        <span class="msc-mandatory-tag">${tt('msc.score.label.mandatory')}</span>
       </div>
       <div class="msc-play-song-display">${songBadgeHtml(song.song, song.effect)}</div>
       ${scoreFieldHtml(playOrder, false)}
@@ -133,7 +136,7 @@ function renderRetryRow(playOrder) {
   const noneOption = `
     <label class="msc-retry-option msc-retry-none">
       <input type="radio" name="${radioName}" value="" checked>
-      <span class="msc-retry-option-label">リトライなし</span>
+      <span class="msc-retry-option-label">${tt('msc.score.retry.none')}</span>
     </label>
   `;
   const songOptions = currentEvent.songs.map((s) => `
@@ -146,7 +149,7 @@ function renderRetryRow(playOrder) {
     <div class="msc-play-row" data-play-order="${playOrder}" data-mandatory="false">
       <div class="msc-play-header">
         <span class="msc-play-track-name">${trackLabel(playOrder)}</span>
-        <span class="msc-retry-tag">リトライ枠</span>
+        <span class="msc-retry-tag">${tt('msc.score.label.retry')}</span>
       </div>
       <fieldset class="msc-retry-options">
         ${noneOption}
@@ -230,7 +233,7 @@ form.querySelectorAll('input[name="platform"]').forEach((r) => {
     let ev;
     if (eventId && /^\d+$/.test(eventId)) {
       const res = await fetch(`/api/msc/events/${eventId}`);
-      if (res.status === 404) { showEventError('指定された MSC イベントは存在しません。'); return; }
+      if (res.status === 404) { showEventError(tt('msc.score.event.not-found')); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       ev = await res.json();
     } else {
@@ -239,15 +242,16 @@ form.querySelectorAll('input[name="platform"]').forEach((r) => {
       const body = await res.json();
       ev = body.event;
       if (ev) {
-        window.location.replace(`/msc/score/?eventId=${encodeURIComponent(ev.mscEventId)}`);
+        const lurl = (h) => (window.i18n && window.i18n.localLink) ? window.i18n.localLink(h) : h;
+        window.location.replace(lurl(`/msc/score/?eventId=${encodeURIComponent(ev.mscEventId)}`));
         return;
       }
     }
-    if (!ev) { showEventError('現在開催中の MSC イベントはありません。'); return; }
+    if (!ev) { showEventError(tt('msc.score.event.no-current')); return; }
     const now = Date.now();
-    if (now < new Date(ev.startDate).getTime()) { showEventError('このイベントはまだ開始していません。'); return; }
-    if (now > new Date(ev.endDate).getTime()) { showEventError('このイベントは既に終了しています。'); return; }
-    if (!ev.songs || ev.songs.length < 2) { showEventError('課題曲が未設定のイベントです。'); return; }
+    if (now < new Date(ev.startDate).getTime()) { showEventError(tt('msc.score.event.not-yet')); return; }
+    if (now > new Date(ev.endDate).getTime()) { showEventError(tt('msc.score.event.ended')); return; }
+    if (!ev.songs || ev.songs.length < 2) { showEventError(tt('msc.score.event.no-songs')); return; }
     currentEvent = ev;
     songCount = ev.songs.length;
     renderEventHeader(ev);
@@ -256,7 +260,7 @@ form.querySelectorAll('input[name="platform"]').forEach((r) => {
     updatePlatformView();
     prefillUserFields();
   } catch (err) {
-    showEventError(`情報の取得に失敗しました: ${err.message}`);
+    showEventError(`${tt('common.error.fetch')}: ${err.message}`);
   }
 })();
 
@@ -306,8 +310,8 @@ function collectSnapshot() {
 
 function validateSnapshot(snap) {
   let ok = true;
-  if (!snap.xId) { showFieldError('xId', 'X ID を入力してください'); ok = false; }
-  if (!snap.submitName) { showFieldError('submitName', '投稿者名を入力してください'); ok = false; }
+  if (!snap.xId) { showFieldError('xId', tt('msc.score.validation.xid')); ok = false; }
+  if (!snap.submitName) { showFieldError('submitName', tt('msc.score.validation.name')); ok = false; }
 
   // 各 play のスコアを個別に検証 (必修枠 + リトライで曲が選択された枠)
   const playByOrder = new Map(snap.plays.map((p) => [p.playOrder, p]));
@@ -316,16 +320,16 @@ function validateSnapshot(snap) {
     const play = playByOrder.get(i);
     if (isMandatory) {
       if (!play || !Number.isFinite(play.score)) {
-        showFieldError(`score-play-${i}`, 'スコアを入力してください'); ok = false;
+        showFieldError(`score-play-${i}`, tt('msc.score.validation.score-required')); ok = false;
       } else if (play.score < 0 || play.score > 10000000) {
-        showFieldError(`score-play-${i}`, 'スコアは 0〜10,000,000 の範囲です'); ok = false;
+        showFieldError(`score-play-${i}`, tt('msc.score.validation.score-range')); ok = false;
       }
     } else if (play) {
       // リトライ枠で曲が選択されている
       if (!Number.isFinite(play.score)) {
-        showFieldError(`score-play-${i}`, 'スコアを入力してください'); ok = false;
+        showFieldError(`score-play-${i}`, tt('msc.score.validation.score-required')); ok = false;
       } else if (play.score < 0 || play.score > 10000000) {
-        showFieldError(`score-play-${i}`, 'スコアは 0〜10,000,000 の範囲です'); ok = false;
+        showFieldError(`score-play-${i}`, tt('msc.score.validation.score-range')); ok = false;
       }
     }
   }
@@ -333,13 +337,13 @@ function validateSnapshot(snap) {
   // 画像
   const summaryKey = snap.platform === 'arcade' ? 'imageSummary' : 'imageSummaryK';
   if (!snap.imageSummary) {
-    showFieldError(summaryKey, '通しリザルト画像は必須です'); ok = false;
+    showFieldError(summaryKey, tt('msc.score.validation.summary-required')); ok = false;
   }
   if (snap.platform === 'konaste') {
     // 必修枠の画像を個別チェック (リトライ枠は任意)
     for (let i = 1; i <= songCount; i++) {
       if (!snap.playImages[i]) {
-        showFieldError(`image-play-${i}`, 'コナステではリザルト画像が必須です'); ok = false;
+        showFieldError(`image-play-${i}`, tt('msc.score.validation.konaste-image')); ok = false;
       }
     }
   }
@@ -355,7 +359,7 @@ function renderConfirm(snap) {
   function imageSlotHtml(file) {
     const slotId = `msc-confirm-img-${slotIdx++}`;
     imageSlots.push({ slotId, file });
-    return `<div id="${slotId}"><span class="muted">読み込み中...</span></div>`;
+    return `<div id="${slotId}"><span class="muted">${tt('common.muted.preview-loading')}</span></div>`;
   }
 
   // 各 Track を info-row 形式で表示 (ラベル / 楽曲名 / スコア が改行で並ぶ)。
@@ -373,7 +377,7 @@ function renderConfirm(snap) {
         playBlocks.push(`<div>${imageSlotHtml(snap.playImages[i])}</div>`);
       }
     } else if (!isMand) {
-      playBlocks.push(`<p class="info-row"><span class="label">${trackLabel(i)}</span><span class="muted">リトライなし</span></p>`);
+      playBlocks.push(`<p class="info-row"><span class="label">${trackLabel(i)}</span><span class="muted">${tt('msc.score.retry.none')}</span></p>`);
     }
   }
   const playsHtml = playBlocks.join('');
@@ -387,18 +391,22 @@ function renderConfirm(snap) {
 
   // 通しリザルト → 合計スコア の順で末尾に
   const summaryHtml = snap.imageSummary
-    ? `<dt>通しリザルト</dt><dd>${imageSlotHtml(snap.imageSummary)}</dd>`
+    ? `<dt>${tt('msc.score.confirm.summary')}</dt><dd>${imageSlotHtml(snap.imageSummary)}</dd>`
     : '';
+
+  const platformLabel = snap.platform === 'arcade'
+    ? tt('msc.score.platform.arcade')
+    : tt('msc.score.platform.konaste');
 
   confirmBody.innerHTML = `
     <dl>
-      <dt>X (Twitter) ID</dt><dd>${escapeHtml(snap.xId)}</dd>
-      <dt>投稿者名</dt><dd>${escapeHtml(snap.submitName)}</dd>
-      <dt>プレー環境</dt><dd>${snap.platform === 'arcade' ? 'アーケード' : 'コナステ'}</dd>
-      <dt>スコア</dt>
+      <dt>${tt('weepa.score.field.xid')}</dt><dd>${escapeHtml(snap.xId)}</dd>
+      <dt>${tt('weepa.score.field.name')}</dt><dd>${escapeHtml(snap.submitName)}</dd>
+      <dt>${tt('msc.score.confirm.platform')}</dt><dd>${platformLabel}</dd>
+      <dt>${tt('msc.score.confirm.score')}</dt>
       <dd>${playsHtml}</dd>
       ${summaryHtml}
-      <dt>合計スコア (各曲ベスト合算)</dt><dd>${previewTotal.toLocaleString('en-US')}</dd>
+      <dt>${tt('msc.score.confirm.total')}</dt><dd>${previewTotal.toLocaleString('en-US')}</dd>
     </dl>
   `;
 
@@ -407,11 +415,11 @@ function renderConfirm(snap) {
     const reader = new FileReader();
     reader.onload = () => {
       const target = document.getElementById(s.slotId);
-      if (target) target.innerHTML = `<img class="preview" alt="リザルト画像" src="${reader.result}">`;
+      if (target) target.innerHTML = `<img class="preview" alt="${tt('msc.score.confirm.image-alt')}" src="${reader.result}">`;
     };
     reader.onerror = () => {
       const target = document.getElementById(s.slotId);
-      if (target) target.innerHTML = '<span class="muted">プレビュー生成失敗</span>';
+      if (target) target.innerHTML = `<span class="muted">${tt('common.muted.preview-fail')}</span>`;
     };
     reader.readAsDataURL(s.file);
   }
@@ -430,7 +438,7 @@ async function actuallySubmit(snap) {
   }
 
   btn.disabled = true;
-  resultEl.textContent = '送信中...';
+  resultEl.textContent = tt('common.error.sending');
   resultEl.className = 'result info';
   try {
     const res = await fetch(`/api/msc/events/${currentEvent.mscEventId}/submissions`, {
@@ -438,7 +446,7 @@ async function actuallySubmit(snap) {
       body: fd,
     });
     if (res.ok) {
-      resultEl.textContent = '✓ 投稿を受け付けました。ありがとうございます。';
+      resultEl.textContent = tt('msc.score.submit.ok');
       resultEl.className = 'result ok';
       saveUserProfile({ xId: snap.xId, submitName: snap.submitName });
       form.reset();
@@ -449,18 +457,18 @@ async function actuallySubmit(snap) {
       const data = await res.json().catch(() => ({}));
       const msg = data?.message
         || (data?.errors ? Object.values(data.errors).flat().join(' / ') : '')
-        || `入力エラー (HTTP 400)`;
+        || `${tt('msc.score.validation.input-error')} (HTTP 400)`;
       resultEl.textContent = msg;
       resultEl.className = 'result ng';
     } else if (res.status === 413) {
-      resultEl.textContent = '画像サイズが大きすぎます。';
+      resultEl.textContent = tt('msc.score.submit.413');
       resultEl.className = 'result ng';
     } else {
-      resultEl.textContent = `送信に失敗しました (HTTP ${res.status})。`;
+      resultEl.textContent = `${tt('msc.score.submit.fail')} (HTTP ${res.status})`;
       resultEl.className = 'result ng';
     }
   } catch (err) {
-    resultEl.textContent = `通信エラー: ${err.message}`;
+    resultEl.textContent = `${tt('common.error.network')}: ${err.message}`;
     resultEl.className = 'result ng';
   } finally {
     btn.disabled = false;

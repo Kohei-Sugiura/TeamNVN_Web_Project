@@ -40,26 +40,33 @@ function isTallied(ev) {
   return !!ev.talliedAt;
 }
 
+function tt(key) {
+  return (window.i18n && window.i18n.t) ? window.i18n.t(key) : key;
+}
+function lurl(href) {
+  return (window.i18n && window.i18n.localLink) ? window.i18n.localLink(href) : href;
+}
+
 function activeCard(ev) {
-  const url = `/weepa/score/?eventId=${encodeURIComponent(ev.weepaEventId)}`;
+  const url = lurl(`/weepa/score/?eventId=${encodeURIComponent(ev.weepaEventId)}`);
   const submitter = ev.submitName
-    ? `<p class="info-row"><span class="label">提案者</span>${escapeHtml(ev.submitName)}</p>`
+    ? `<p class="info-row"><span class="label">${tt('weepa.label.submitter')}</span>${escapeHtml(ev.submitName)}</p>`
     : '';
   const reason = ev.submitReason
-    ? `<p class="info-row"><span class="label">選曲理由</span>${escapeHtml(ev.submitReason)}</p>`
+    ? `<p class="info-row"><span class="label">${tt('weepa.label.reason')}</span>${escapeHtml(ev.submitReason)}</p>`
     : '';
   return `
     <section class="weepa-status-card">
-      <h3 class="weepa-status-title">現在開催中</h3>
+      <h3 class="weepa-status-title">${tt('weepa.current-event')}</h3>
       <div class="weepa-status-body">
         <div class="event-title">
           <span class="song">${escapeHtml(ev.song)}</span>
           <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
         </div>
-        <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
+        <p class="info-row"><span class="label">${tt('weepa.label.period')}</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
         ${submitter}
         ${reason}
-        <p class="event-link-wrap"><a class="event-link" href="${url}">スコアを投稿する</a></p>
+        <p class="event-link-wrap"><a class="event-link" href="${url}">${tt('nav.score')}</a></p>
       </div>
     </section>
   `;
@@ -68,15 +75,15 @@ function activeCard(ev) {
 function recentEntry(ev, now) {
   const tallied = isTallied(ev);
   const action = tallied
-    ? `<a class="event-link" href="/weepa/ranking/?eventId=${encodeURIComponent(ev.weepaEventId)}">ランキング詳細を見る</a>`
-    : `<span class="weepa-pending">集計が完了するまでお待ちください</span>`;
+    ? `<a class="event-link" href="${lurl(`/weepa/ranking/?eventId=${encodeURIComponent(ev.weepaEventId)}`)}">${tt('nav.ranking-detail')}</a>`
+    : `<span class="weepa-pending">${tt('nav.pending')}</span>`;
   return `
     <div class="recent-event">
       <div class="event-title">
         <span class="song">${escapeHtml(ev.song)}</span>
         <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
       </div>
-      <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
+      <p class="info-row"><span class="label">${tt('weepa.label.period')}</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
       <p class="event-link-wrap">${action}</p>
     </div>
   `;
@@ -86,7 +93,7 @@ function recentCard(events, now) {
   if (!events.length) return '';
   return `
     <section class="weepa-status-card">
-      <h3 class="weepa-status-title">直近の開催</h3>
+      <h3 class="weepa-status-title">${tt('weepa.recent-events')}</h3>
       <div class="weepa-status-body recent-events">
         ${events.map((ev) => recentEntry(ev, now)).join('')}
       </div>
@@ -97,9 +104,9 @@ function recentCard(events, now) {
 function adjustingCard() {
   return `
     <section class="weepa-status-card">
-      <h3 class="weepa-status-title">調整中</h3>
+      <h3 class="weepa-status-title">${tt('weepa.adjusting')}</h3>
       <div class="weepa-status-body">
-        <p>次回の開催準備中です。</p>
+        <p>${tt('weepa.adjusting.body')}</p>
       </div>
     </section>
   `;
@@ -124,7 +131,7 @@ function adjustingCard() {
 
     cardsEl.innerHTML = cards.join('');
   } catch (err) {
-    cardsEl.innerHTML = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
+    cardsEl.innerHTML = `<p class="error">${tt('common.error.fetch')}: ${escapeHtml(err.message)}</p>`;
   }
 })();
 
@@ -139,20 +146,20 @@ function mscSongsHtml(songs) {
     .sort((a, b) => a.songOrder - b.songOrder)
     .map((s) => `${s.songOrder}. ${escapeHtml(s.song)} <span class="effect effect-${(s.effect || '').toLowerCase()}">${escapeHtml(s.effect)}</span>`)
     .join('<br>');
-  return `<p class="info-row"><span class="label">課題曲</span>${lines}</p>`;
+  return `<p class="info-row"><span class="label">${tt('msc.label.tracks')}</span>${lines}</p>`;
 }
 
 function mscActiveCard(ev) {
-  const url = `/msc/score/?eventId=${encodeURIComponent(ev.mscEventId)}`;
+  const url = lurl(`/msc/score/?eventId=${encodeURIComponent(ev.mscEventId)}`);
   return `
     <section class="weepa-status-card">
-      <h3 class="weepa-status-title">現在開催中</h3>
+      <h3 class="weepa-status-title">${tt('weepa.current-event')}</h3>
       <div class="weepa-status-body">
         <h2 class="msc-event-title">${escapeHtml(ev.title)}</h2>
-        <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
+        <p class="info-row"><span class="label">${tt('weepa.label.period')}</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
         ${mscSongsHtml(ev.songs)}
-        ${ev.description ? `<p class="info-row"><span class="label">説明</span>${escapeHtml(ev.description)}</p>` : ''}
-        <p class="event-link-wrap"><a class="event-link" href="${url}">スコアを投稿する</a></p>
+        ${ev.description ? `<p class="info-row"><span class="label">${tt('weepa.label.reason')}</span>${escapeHtml(ev.description)}</p>` : ''}
+        <p class="event-link-wrap"><a class="event-link" href="${url}">${tt('nav.score')}</a></p>
       </div>
     </section>
   `;
@@ -161,12 +168,12 @@ function mscActiveCard(ev) {
 function mscRecentEntry(ev) {
   const tallied = isTallied(ev);
   const action = tallied
-    ? `<a class="event-link" href="/msc/ranking/?eventId=${encodeURIComponent(ev.mscEventId)}">ランキング詳細を見る</a>`
-    : `<span class="weepa-pending">集計が完了するまでお待ちください</span>`;
+    ? `<a class="event-link" href="${lurl(`/msc/ranking/?eventId=${encodeURIComponent(ev.mscEventId)}`)}">${tt('nav.ranking-detail')}</a>`
+    : `<span class="weepa-pending">${tt('nav.pending')}</span>`;
   return `
     <div class="recent-event">
       <h2 class="msc-event-title">${escapeHtml(ev.title)}</h2>
-      <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
+      <p class="info-row"><span class="label">${tt('weepa.label.period')}</span>${escapeHtml(formatYmdHm(ev.startDate))} ~ ${escapeHtml(formatYmdHm(ev.endDate))}</p>
       ${mscSongsHtml(ev.songs)}
       <p class="event-link-wrap">${action}</p>
     </div>
@@ -177,7 +184,7 @@ function mscRecentCard(events) {
   if (!events.length) return '';
   return `
     <section class="weepa-status-card">
-      <h3 class="weepa-status-title">直近の開催</h3>
+      <h3 class="weepa-status-title">${tt('weepa.recent-events')}</h3>
       <div class="weepa-status-body recent-events">
         ${events.map((ev) => mscRecentEntry(ev)).join('')}
       </div>
@@ -188,9 +195,9 @@ function mscRecentCard(events) {
 function mscAdjustingCard() {
   return `
     <section class="weepa-status-card">
-      <h3 class="weepa-status-title">調整中</h3>
+      <h3 class="weepa-status-title">${tt('weepa.adjusting')}</h3>
       <div class="weepa-status-body">
-        <p>次回の開催準備中です。</p>
+        <p>${tt('weepa.adjusting.body')}</p>
       </div>
     </section>
   `;
@@ -216,6 +223,6 @@ function mscAdjustingCard() {
 
     mscCardsEl.innerHTML = cards.join('');
   } catch (err) {
-    mscCardsEl.innerHTML = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
+    mscCardsEl.innerHTML = `<p class="error">${tt('common.error.fetch')}: ${escapeHtml(err.message)}</p>`;
   }
 })();

@@ -17,6 +17,9 @@ function formatYmd(iso) {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
+const tt = (k) => (window.i18n && window.i18n.t) ? window.i18n.t(k) : k;
+const lurl = (h) => (window.i18n && window.i18n.localLink) ? window.i18n.localLink(h) : h;
+
 function renderEventHeader(ev) {
   eventSection.hidden = false;
   const songLines = (ev.songs || [])
@@ -24,9 +27,9 @@ function renderEventHeader(ev) {
     .join('<br>');
   eventDisplay.innerHTML = `
     <h2 class="msc-event-title">${escapeHtml(ev.title)}</h2>
-    <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
-    <p class="info-row"><span class="label">課題曲</span>${songLines}</p>
-    ${ev.description ? `<p class="info-row"><span class="label">説明</span>${escapeHtml(ev.description)}</p>` : ''}
+    <p class="info-row"><span class="label">${tt('msc.score.label.period')}</span>${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
+    <p class="info-row"><span class="label">${tt('msc.label.tracks')}</span>${songLines}</p>
+    ${ev.description ? `<p class="info-row"><span class="label">${tt('msc.label.description')}</span>${escapeHtml(ev.description)}</p>` : ''}
   `;
 }
 
@@ -43,19 +46,19 @@ function renderRanking(entries, songs) {
 function renderPastList(events) {
   pastSection.hidden = false;
   if (!events || events.length === 0) {
-    pastDisplay.innerHTML = '<p class="empty">集計済みのイベントはまだありません。</p>';
+    pastDisplay.innerHTML = `<p class="empty">${tt('common.empty.events')}</p>`;
     return;
   }
   const rows = events.map((ev) => `
     <tr>
-      <td class="name"><a href="/msc/ranking/?eventId=${encodeURIComponent(ev.mscEventId)}">${escapeHtml(ev.title)}</a></td>
+      <td class="name"><a href="${lurl(`/msc/ranking/?eventId=${encodeURIComponent(ev.mscEventId)}`)}">${escapeHtml(ev.title)}</a></td>
       <td>${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</td>
     </tr>
   `).join('');
   pastDisplay.innerHTML = `
     <table class="ranking-table">
       <thead>
-        <tr><th>タイトル</th><th>開催期間</th></tr>
+        <tr><th>${tt('history.col.title')}</th><th>${tt('msc.score.label.period')}</th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
@@ -71,7 +74,7 @@ async function showEventRanking(eventId) {
   try {
     const evRes = await fetch(`/api/msc/events/${eventId}`);
     if (evRes.status === 404) {
-      showEventError('指定されたイベントは存在しません。');
+      showEventError(tt('msc.score.event.not-found'));
       return;
     }
     if (!evRes.ok) throw new Error(`HTTP ${evRes.status}`);
@@ -81,14 +84,14 @@ async function showEventRanking(eventId) {
     const rankRes = await fetch(`/api/msc/events/${eventId}/ranking`);
     if (rankRes.status === 404) {
       rankingSection.hidden = false;
-      rankingDisplay.innerHTML = '<p class="empty">このイベントの集計結果はまだ公開されていません。</p>';
+      rankingDisplay.innerHTML = `<p class="empty">${tt('msc.ranking.not-published')}</p>`;
       return;
     }
     if (!rankRes.ok) throw new Error(`HTTP ${rankRes.status}`);
     const entries = await rankRes.json();
     renderRanking(entries, ev.songs || []);
   } catch (err) {
-    showEventError(`情報の取得に失敗しました: ${err.message}`);
+    showEventError(`${tt('common.error.fetch')}: ${err.message}`);
   }
 }
 
@@ -99,7 +102,7 @@ async function showPastEventList() {
     const events = await res.json();
     renderPastList(events);
   } catch (err) {
-    showPastError(`情報の取得に失敗しました: ${err.message}`);
+    showPastError(`${tt('common.error.fetch')}: ${err.message}`);
   }
 }
 
@@ -116,7 +119,7 @@ async function showPastEventList() {
     if (res.ok) {
       const events = await res.json();
       if (events.length > 0) {
-        window.location.replace(`/msc/ranking/?eventId=${encodeURIComponent(events[0].mscEventId)}`);
+        window.location.replace(lurl(`/msc/ranking/?eventId=${encodeURIComponent(events[0].mscEventId)}`));
         return;
       }
     }

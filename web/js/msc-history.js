@@ -1,6 +1,9 @@
 const heldEl = document.getElementById('held');
 const unheldEl = document.getElementById('unheld');
 
+const tt = (k) => (window.i18n && window.i18n.t) ? window.i18n.t(k) : k;
+const lurl = (h) => (window.i18n && window.i18n.localLink) ? window.i18n.localLink(h) : h;
+
 function escapeHtml(s) {
     if (s === null || s === undefined) return '';
     return String(s).replace(/[&<>"']/g, (c) => ({
@@ -22,7 +25,7 @@ function formatPeriod(startIso, endIso) {
 }
 
 function songsCell(songs) {
-    if (!songs || !songs.length) return '(曲未設定)';
+    if (!songs || !songs.length) return tt('msc.songs.unset');
     return [...songs]
         .sort((a, b) => a.songOrder - b.songOrder)
         .map((s) => `${s.songOrder}. ${escapeHtml(s.song)} [${escapeHtml(s.effect)}]`)
@@ -39,12 +42,12 @@ function eventState(ev, now) {
 
 function statusCell(ev, now) {
     const state = eventState(ev, now);
-    if (state === 'active') return '<span class="status-active">開催中</span>';
-    if (state === 'tallying') return '<span class="status-tallying">集計中</span>';
+    if (state === 'active') return `<span class="status-active">${tt('status.active')}</span>`;
+    if (state === 'tallying') return `<span class="status-tallying">${tt('status.tallying')}</span>`;
     if (state === 'finished') {
-        return `<a class="status-link" href="/msc/ranking/?eventId=${encodeURIComponent(ev.mscEventId)}">結果を表示</a>`;
+        return `<a class="status-link" href="${lurl(`/msc/ranking/?eventId=${encodeURIComponent(ev.mscEventId)}`)}">${tt('status.result-link')}</a>`;
     }
-    return '<span class="status-tallying">-</span>';
+    return `<span class="status-tallying">${tt('status.dash')}</span>`;
 }
 
 function heldRow(ev, idx, now) {
@@ -71,14 +74,14 @@ function unheldRow(ev) {
 
 function renderHeld(items, now) {
     if (!items.length) {
-        heldEl.innerHTML = '<p class="empty">まだ開催履歴はありません。</p>';
+        heldEl.innerHTML = `<p class="empty">${tt('common.empty.history')}</p>`;
         return;
     }
     const rows = items.map((ev, i) => heldRow(ev, i, now)).join('');
     heldEl.innerHTML = `
       <table class="ranking-table history-table">
         <thead>
-          <tr><th>#</th><th>タイトル</th><th>開催期間</th><th>課題曲</th><th class="status-cell">ステータス</th></tr>
+          <tr><th>${tt('history.col.num')}</th><th>${tt('history.col.title')}</th><th>${tt('history.col.period')}</th><th>${tt('msc.label.tracks')}</th><th class="status-cell">${tt('history.col.status')}</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -87,14 +90,14 @@ function renderHeld(items, now) {
 
 function renderUnheld(items) {
     if (!items.length) {
-        unheldEl.innerHTML = '<p class="empty">未開催のイベントはありません。</p>';
+        unheldEl.innerHTML = `<p class="empty">${tt('common.empty.history.upcoming.msc')}</p>`;
         return;
     }
     const rows = items.map(unheldRow).join('');
     unheldEl.innerHTML = `
       <table class="ranking-table history-table">
         <thead>
-          <tr><th>タイトル</th><th>開催予定</th><th>課題曲</th></tr>
+          <tr><th>${tt('history.col.title')}</th><th>${tt('history.col.upcoming-period')}</th><th>${tt('msc.label.tracks')}</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -119,7 +122,7 @@ function renderUnheld(items) {
         renderHeld(held, now);
         renderUnheld(unheld);
     } catch (err) {
-        heldEl.innerHTML = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
+        heldEl.innerHTML = `<p class="error">${tt('common.error.fetch')}: ${escapeHtml(err.message)}</p>`;
         unheldEl.innerHTML = '';
     }
 })();

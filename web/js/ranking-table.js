@@ -55,9 +55,11 @@
     return dir === 'asc' ? cmp : -cmp;
   }
 
+  const tt = (k) => (window.i18n && window.i18n.t) ? window.i18n.t(k) : k;
+
   window.renderRankingTable = function (targetEl, entries, options) {
     if (!entries || entries.length === 0) {
-      targetEl.innerHTML = '<p class="empty">まだランキングがありません。</p>';
+      targetEl.innerHTML = `<p class="empty">${tt('common.empty.ranking')}</p>`;
       return;
     }
     const exScoreMax = options && Number.isFinite(options.exScoreMax) ? options.exScoreMax : null;
@@ -91,11 +93,11 @@
         <table class="ranking-table ranking-detail-table sortable-table">
           <thead>
             <tr>
-              <th>投稿者名</th>
-              <th class="sortable" data-sort="score">スコア${indicator('score')}</th>
-              <th class="sortable" data-sort="exScore">EXスコア${indicator('exScore')}</th>
-              <th class="sortable" data-sort="lastSubmitDate">最終投稿日時${indicator('lastSubmitDate')}</th>
-              <th class="sortable" data-sort="updateCount">スコア更新回数${indicator('updateCount')}</th>
+              <th>${tt('ranking.col.name')}</th>
+              <th class="sortable" data-sort="score">${tt('ranking.col.score')}${indicator('score')}</th>
+              <th class="sortable" data-sort="exScore">${tt('ranking.col.exscore')}${indicator('exScore')}</th>
+              <th class="sortable" data-sort="lastSubmitDate">${tt('ranking.col.last-submit')}${indicator('lastSubmitDate')}</th>
+              <th class="sortable" data-sort="updateCount">${tt('ranking.col.update-count')}${indicator('updateCount')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

@@ -118,6 +118,36 @@ a:hover {
   box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
 }
 
+/* 言語切替 (i18n.js が動的に挿入する) */
+.lang-switcher {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-self: center;
+  font-size: 0.85rem;
+}
+.lang-switcher .lang-link {
+  color: #9090b0;
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.lang-switcher .lang-link:hover {
+  color: #00e5ff;
+  border-color: rgba(0, 229, 255, 0.5);
+  text-decoration: none;
+  text-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
+}
+.lang-switcher .lang-link.active {
+  color: #fff;
+  background: rgba(0, 229, 255, 0.15);
+  border-color: rgba(0, 229, 255, 0.6);
+  cursor: default;
+}
+
 .site-header h1 {
   /* h1 自体には背景指定せず、グラデは .site-header-name に当てる
      (h1 に当てると左にあるアイコン領域に cyan 部分が消費されてしまうため) */
@@ -1526,6 +1556,25 @@ body.screenshot-mode .db-table-wrap {
     padding-bottom: 14px;
   }
 
+  /* モバイルでは言語切替を独立した行に下ろし、タップしやすいボタンにする */
+  .lang-switcher {
+    margin-left: 0;
+    width: 100%;
+    gap: 10px;
+    margin-top: 6px;
+    font-size: 0.95rem;
+  }
+  .lang-switcher .lang-link {
+    flex: 1 1 0;
+    text-align: center;
+    padding: 10px 12px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+  }
+
   .site-header-name {
     font-size: 1.8rem;
     letter-spacing: 0.04em;
@@ -1963,13 +2012,15 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .field.drag-over {
   position: relative;
 }
-.field.drag-over input[type="file"] {
+.field.drag-over input[type="file"],
+.field.drag-over .file-pick {
   outline: 2px dashed #00e5ff;
   outline-offset: 2px;
   background: rgba(0, 229, 255, 0.10);
+  border-radius: 6px;
 }
 .field.drag-over::after {
-  content: 'ドロップで画像をセット';
+  content: attr(data-drop-hint);
   position: absolute;
   top: 50%;
   right: 8px;
@@ -1978,6 +2029,56 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   color: #00e5ff;
   text-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
   pointer-events: none;
+}
+
+/* i18n 化したカスタム file input。
+   <label.file-pick> が <input type=file> を内包し、ネイティブボタンは
+   JS のインラインスタイルで隠す。表示されるのは翻訳済みの span だけ。 */
+/* 元のネイティブ file input と同じく枠で囲む。中に翻訳ボタン + ファイル名。 */
+.file-pick {
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* 横方向の間隔は .file-name-label の margin-left で確定させる
+     (絶対配置の hidden input が先頭にあると flex の column-gap が
+     期待どおり効かないブラウザがあるため) */
+  row-gap: 8px;
+  column-gap: 0;
+  width: 100%;
+  padding: 7px 10px;
+  background: rgba(8, 8, 22, 0.7);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.file-pick:hover {
+  border-color: rgba(0, 229, 255, 0.55);
+}
+.file-pick-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #00e5ff 0%, #bb00ff 100%);
+  border-radius: 4px;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: filter 0.15s, box-shadow 0.15s;
+}
+.file-pick:hover .file-pick-btn {
+  filter: brightness(1.1);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+}
+.file-name-label {
+  margin-left: 12px;
+  color: #8a8aaa;
+  font-size: 0.9rem;
+  word-break: break-all;
 }
 
 @media (max-width: 600px) {

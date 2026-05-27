@@ -17,6 +17,9 @@ function formatYmd(iso) {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
+const tt = (k) => (window.i18n && window.i18n.t) ? window.i18n.t(k) : k;
+const lurl = (h) => (window.i18n && window.i18n.localLink) ? window.i18n.localLink(h) : h;
+
 function renderEventHeader(ev) {
   eventSection.hidden = false;
   eventDisplay.innerHTML = `
@@ -24,7 +27,7 @@ function renderEventHeader(ev) {
       <span class="song">${escapeHtml(ev.song)}</span>
       <span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span>
     </div>
-    <p class="info-row"><span class="label">開催期間</span>${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
+    <p class="info-row"><span class="label">${tt('weepa.label.period')}</span>${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</p>
   `;
 }
 
@@ -41,12 +44,12 @@ function showEventError(message) {
 function renderPastList(events) {
   pastSection.hidden = false;
   if (!events || events.length === 0) {
-    pastDisplay.innerHTML = '<p class="empty">集計済みのイベントはまだありません。</p>';
+    pastDisplay.innerHTML = `<p class="empty">${tt('common.empty.events')}</p>`;
     return;
   }
   const rows = events.map((ev) => `
     <tr>
-      <td class="name"><a href="/weepa/ranking/?eventId=${encodeURIComponent(ev.weepaEventId)}">${escapeHtml(ev.song)}</a></td>
+      <td class="name"><a href="${lurl(`/weepa/ranking/?eventId=${encodeURIComponent(ev.weepaEventId)}`)}">${escapeHtml(ev.song)}</a></td>
       <td><span class="effect effect-${(ev.effect || '').toLowerCase()}">${escapeHtml(ev.effect)}</span></td>
       <td class="ex">${escapeHtml(formatYmd(ev.startDate))} ~ ${escapeHtml(formatYmd(ev.endDate))}</td>
     </tr>
@@ -55,9 +58,9 @@ function renderPastList(events) {
     <table class="ranking-table">
       <thead>
         <tr>
-          <th>楽曲</th>
-          <th>譜面種</th>
-          <th>開催期間</th>
+          <th>${tt('ranking.col.song')}</th>
+          <th>${tt('ranking.col.effect')}</th>
+          <th>${tt('ranking.col.period')}</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -74,7 +77,7 @@ async function showEventRanking(eventId) {
   try {
     const evRes = await fetch(`/api/events/${eventId}`);
     if (evRes.status === 404) {
-      showEventError('指定されたイベントは存在しません。');
+      showEventError(tt('weepa.score.event.not-found'));
       return;
     }
     if (!evRes.ok) throw new Error(`HTTP ${evRes.status}`);
@@ -86,7 +89,7 @@ async function showEventRanking(eventId) {
     const entries = await rankRes.json();
     renderRanking(entries, ev);
   } catch (err) {
-    showEventError(`情報の取得に失敗しました: ${err.message}`);
+    showEventError(`${tt('common.error.fetch')}: ${err.message}`);
   }
 }
 
@@ -97,7 +100,7 @@ async function showPastEventList() {
     const events = await res.json();
     renderPastList(events);
   } catch (err) {
-    showPastError(`情報の取得に失敗しました: ${err.message}`);
+    showPastError(`${tt('common.error.fetch')}: ${err.message}`);
   }
 }
 
@@ -114,7 +117,7 @@ async function showPastEventList() {
     if (res.ok) {
       const events = await res.json();
       if (events.length > 0) {
-        window.location.replace(`/weepa/ranking/?eventId=${encodeURIComponent(events[0].weepaEventId)}`);
+        window.location.replace(lurl(`/weepa/ranking/?eventId=${encodeURIComponent(events[0].weepaEventId)}`));
         return;
       }
     }

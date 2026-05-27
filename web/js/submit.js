@@ -82,26 +82,33 @@ function buildPayload() {
   };
 }
 
+function tt(key) {
+  return (window.i18n && window.i18n.t) ? window.i18n.t(key) : key;
+}
+
 function renderConfirm(payload) {
+  const empty = `<span class="muted">${tt('common.muted.empty')}</span>`;
+  const unselected = `<span class="muted">${tt('common.muted.unselected')}</span>`;
+  const none = `<span class="muted">${tt('common.muted.none')}</span>`;
   confirmBody.innerHTML = `
     <dl>
-      <dt>X (Twitter) ID</dt>
-      <dd>${payload.xId ? escapeHtml(payload.xId) : '<span class="muted">(未入力)</span>'}</dd>
-      <dt>投稿者名</dt>
-      <dd>${payload.submitName ? escapeHtml(payload.submitName) : '<span class="muted">(未入力)</span>'}</dd>
-      <dt>楽曲名</dt>
-      <dd>${payload.song ? escapeHtml(payload.song) : '<span class="muted">(未入力)</span>'}</dd>
-      <dt>譜面種</dt>
-      <dd>${payload.effect ? escapeHtml(effectLabel(payload.effect)) : '<span class="muted">(未選択)</span>'}</dd>
-      <dt>選曲理由</dt>
-      <dd>${payload.submitReason ? escapeHtml(payload.submitReason) : '<span class="muted">(なし)</span>'}</dd>
+      <dt>${tt('weepa.submit.field.xid')}</dt>
+      <dd>${payload.xId ? escapeHtml(payload.xId) : empty}</dd>
+      <dt>${tt('weepa.submit.field.name')}</dt>
+      <dd>${payload.submitName ? escapeHtml(payload.submitName) : empty}</dd>
+      <dt>${tt('weepa.submit.field.song')}</dt>
+      <dd>${payload.song ? escapeHtml(payload.song) : empty}</dd>
+      <dt>${tt('weepa.submit.field.effect')}</dt>
+      <dd>${payload.effect ? escapeHtml(effectLabel(payload.effect)) : unselected}</dd>
+      <dt>${tt('weepa.submit.field.reason')}</dt>
+      <dd>${payload.submitReason ? escapeHtml(payload.submitReason) : none}</dd>
     </dl>
   `;
 }
 
 async function actuallySubmit(payload) {
   btn.disabled = true;
-  resultEl.textContent = '送信中...';
+  resultEl.textContent = tt('common.error.sending');
   resultEl.className = 'result info';
 
   try {
@@ -113,7 +120,7 @@ async function actuallySubmit(payload) {
 
     if (res.ok) {
       await res.json().catch(() => null);
-      resultEl.textContent = '✓ 投稿を受け付けました。ありがとうございます。';
+      resultEl.textContent = tt('weepa.submit.ok');
       resultEl.className = 'result ok';
       saveUserProfile({ xId: payload.xId, submitName: payload.submitName });
       form.reset();
@@ -121,15 +128,15 @@ async function actuallySubmit(payload) {
     } else if (res.status === 400) {
       const data = await res.json().catch(() => ({}));
       mapServerErrors(data.errors);
-      resultEl.textContent = '入力内容にエラーがあります。各項目の赤字メッセージをご確認ください。';
+      resultEl.textContent = tt('common.error.validation');
       resultEl.className = 'result ng';
       scrollToFirstError();
     } else {
-      resultEl.textContent = `送信に失敗しました (HTTP ${res.status})。時間をおいて再度お試しください。`;
+      resultEl.textContent = `${tt('common.error.send')} (HTTP ${res.status})`;
       resultEl.className = 'result ng';
     }
   } catch (err) {
-    resultEl.textContent = `通信エラー: ${err.message}`;
+    resultEl.textContent = `${tt('common.error.network')}: ${err.message}`;
     resultEl.className = 'result ng';
   } finally {
     btn.disabled = false;

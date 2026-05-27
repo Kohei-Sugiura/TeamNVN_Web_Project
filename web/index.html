@@ -26,7 +26,7 @@
   <main class="container">
     <header class="site-header">
       <h1><a href="/"><img class="site-header-logo" src="/image/TeamNVN_icon.png" alt=""><span class="site-header-name">Team NVN</span></a></h1>
-      <p class="subtitle">SOUND VOLTEX 交流チーム</p>
+      <p class="subtitle" data-i18n="site.subtitle">SOUND VOLTEX 交流チーム</p>
     </header>
 
     <section class="weepa-section">
@@ -36,12 +36,12 @@
           <span class="weepa-tagline">WeePA</span>
         </header>
         <div id="weepa-cards">
-          <p class="loading">読み込み中...</p>
+          <p class="loading" data-i18n="common.loading">読み込み中...</p>
         </div>
         <nav class="weepa-links">
-          <a href="/weepa/submit/">楽曲投稿フォーム</a>
+          <a href="/weepa/submit/" data-i18n="nav.submit">楽曲投稿フォーム</a>
           <span class="sep">|</span>
-          <a href="/weepa/history/">開催履歴</a>
+          <a href="/weepa/history/" data-i18n="nav.history">開催履歴</a>
         </nav>
       </article>
     </section>
@@ -52,19 +52,21 @@
           <span class="weepa-tagline">MoonShotChallenge</span>
         </header>
         <div id="msc-cards">
-          <p class="loading">読み込み中...</p>
+          <p class="loading" data-i18n="common.loading">読み込み中...</p>
         </div>
         <nav class="weepa-links">
-          <a href="/msc/history/">開催履歴</a>
+          <a href="/msc/history/" data-i18n="nav.history">開催履歴</a>
         </nav>
       </article>
     </section>
 
     <footer class="site-footer">
-      <a href="/admin/login/">管理者ログイン</a>
+      <a href="/admin/login/" data-i18n-skip-link>管理者ログイン</a>
     </footer>
   </main>
 
+  <script src="/js/i18n-dict.js"></script>
+  <script src="/js/i18n.js"></script>
   <script src="/js/main.js"></script>
 </body>
 </html>

@@ -1,6 +1,9 @@
 const heldEl = document.getElementById('held');
 const unheldEl = document.getElementById('unheld');
 
+const tt = (k) => (window.i18n && window.i18n.t) ? window.i18n.t(k) : k;
+const lurl = (h) => (window.i18n && window.i18n.localLink) ? window.i18n.localLink(h) : h;
+
 function escapeHtml(s) {
     if (s === null || s === undefined) return '';
     return String(s).replace(/[&<>"']/g, (c) => ({
@@ -35,12 +38,12 @@ function eventState(s, now) {
 
 function statusCell(s, now) {
     const state = eventState(s, now);
-    if (state === 'active') return '<span class="status-active">開催中</span>';
-    if (state === 'tallying') return '<span class="status-tallying">集計中</span>';
+    if (state === 'active') return `<span class="status-active">${tt('status.active')}</span>`;
+    if (state === 'tallying') return `<span class="status-tallying">${tt('status.tallying')}</span>`;
     if (state === 'finished' && s.weepaEventId) {
-        return `<a class="status-link" href="/weepa/ranking/?eventId=${encodeURIComponent(s.weepaEventId)}">結果を表示</a>`;
+        return `<a class="status-link" href="${lurl(`/weepa/ranking/?eventId=${encodeURIComponent(s.weepaEventId)}`)}">${tt('status.result-link')}</a>`;
     }
-    return '<span class="status-tallying">-</span>';
+    return `<span class="status-tallying">${tt('status.dash')}</span>`;
 }
 
 function heldRow(s, idx, now) {
@@ -69,14 +72,14 @@ function unheldRow(s) {
 
 function renderHeld(items, now) {
     if (!items.length) {
-        heldEl.innerHTML = '<p class="empty">まだ開催履歴はありません。</p>';
+        heldEl.innerHTML = `<p class="empty">${tt('common.empty.history')}</p>`;
         return;
     }
     const rows = items.map((s, i) => heldRow(s, i, now)).join('');
     heldEl.innerHTML = `
       <table class="ranking-table history-table">
         <thead>
-          <tr><th>#</th><th>楽曲</th><th>譜面種</th><th>提案者</th><th>開催期間</th><th class="status-cell">ステータス</th></tr>
+          <tr><th>${tt('history.col.num')}</th><th>${tt('history.col.song')}</th><th>${tt('history.col.effect')}</th><th>${tt('history.col.submitter')}</th><th>${tt('history.col.period')}</th><th class="status-cell">${tt('history.col.status')}</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -85,14 +88,14 @@ function renderHeld(items, now) {
 
 function renderUnheld(items) {
     if (!items.length) {
-        unheldEl.innerHTML = '<p class="empty">未開催の楽曲はありません。</p>';
+        unheldEl.innerHTML = `<p class="empty">${tt('common.empty.history.upcoming')}</p>`;
         return;
     }
     const rows = items.map(unheldRow).join('');
     unheldEl.innerHTML = `
       <table class="ranking-table history-table">
         <thead>
-          <tr><th>楽曲</th><th>譜面種</th><th>提案者</th></tr>
+          <tr><th>${tt('history.col.song')}</th><th>${tt('history.col.effect')}</th><th>${tt('history.col.submitter')}</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -124,7 +127,7 @@ function renderUnheld(items) {
         renderHeld(held, now);
         renderUnheld(unheld);
     } catch (err) {
-        heldEl.innerHTML = `<p class="error">取得に失敗しました: ${escapeHtml(err.message)}</p>`;
+        heldEl.innerHTML = `<p class="error">${tt('common.error.fetch')}: ${escapeHtml(err.message)}</p>`;
         unheldEl.innerHTML = '';
     }
 })();
