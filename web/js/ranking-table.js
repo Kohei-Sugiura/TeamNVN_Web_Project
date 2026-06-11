@@ -27,9 +27,12 @@
     const pct = Math.floor(ratio * 1000) / 10; // 小数 1 桁切り捨て
     return `${formatScore(ex)} <span class="ex-max-tag">(${pct.toFixed(1)}%)</span>`;
   }
+  // 閲覧者のタイムゾーンや実行環境 (Discord スクショは UTC コンテナ内で描画) に
+  // 依存しないよう、表示は JST 固定。
   function formatDate(iso) {
     const d = new Date(iso);
     return d.toLocaleString('ja-JP', {
+      timeZone: 'Asia/Tokyo',
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit',
     });

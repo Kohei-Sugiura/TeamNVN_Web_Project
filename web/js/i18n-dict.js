@@ -114,6 +114,12 @@ window.I18N_DICT = {
     'weepa.score.recognize.filled-suffix': '値を確認してください。',
     'weepa.score.recognize.preprocess-fail': '画像の事前処理に失敗',
     'weepa.score.recognize.image-load-fail': '画像の読み込みに失敗しました',
+    'weepa.score.upload.preparing': '画像を準備中...',
+    'weepa.score.upload.progress': 'アップロード中',
+    'weepa.score.upload.slow': '通信が遅いようです。しばらくお待ちください...',
+    'weepa.score.upload.processing': 'サーバーで処理中...',
+    'weepa.score.upload.retrying': 'タイムアウトしました。自動で再試行しています...',
+    'weepa.score.upload.timeout': 'タイムアウトしました。通信状況をご確認のうえ、もう一度お試しください。',
 
     // ランキング
     'ranking.title': '集計結果',
@@ -314,6 +320,12 @@ window.I18N_DICT = {
     'weepa.score.recognize.filled-suffix': '값을 확인해 주세요.',
     'weepa.score.recognize.preprocess-fail': '이미지 사전 처리 실패',
     'weepa.score.recognize.image-load-fail': '이미지 로드에 실패했습니다',
+    'weepa.score.upload.preparing': '이미지 준비 중...',
+    'weepa.score.upload.progress': '업로드 중',
+    'weepa.score.upload.slow': '통신이 느린 것 같습니다. 잠시만 기다려 주세요...',
+    'weepa.score.upload.processing': '서버에서 처리 중...',
+    'weepa.score.upload.retrying': '시간 초과되었습니다. 자동으로 재시도하고 있습니다...',
+    'weepa.score.upload.timeout': '시간 초과되었습니다. 통신 상태를 확인 후 다시 시도해 주세요.',
 
     // 랭킹
     'ranking.title': '집계 결과',

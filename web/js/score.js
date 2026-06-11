@@ -196,57 +196,180 @@ function renderConfirm(snap) {
   }
 }
 
+// 確認ダイアログ内のステータス表示 (テキスト + 進捗バー)。
+// 投稿中はダイアログを閉じず、ここに進捗を出す。
+let _uploading = false;
+function ensureDialogStatus() {
+  let s = document.getElementById('confirm-status');
+  if (s) return s;
+  s = document.createElement('div');
+  s.id = 'confirm-status';
+  s.className = 'confirm-status';
+  s.hidden = true;
+  s.innerHTML = '<p class="confirm-status-text"></p><progress id="upload-progress" class="upload-progress" max="100" value="0"></progress>';
+  const actions = dialog.querySelector('.dialog-actions');
+  actions.parentNode.insertBefore(s, actions);
+  return s;
+}
+function setDialogStatus(text, cls) {
+  const s = ensureDialogStatus();
+  s.hidden = false;
+  s.querySelector('.confirm-status-text').textContent = text;
+  s.className = 'confirm-status ' + (cls || '');
+}
+// pct=null で不定形 (アニメーション) 表示。アップロード完了後のサーバー処理待ちで使う。
+function setDialogProgress(pct) {
+  const p = document.getElementById('upload-progress');
+  if (!p) return;
+  if (pct == null) p.removeAttribute('value');
+  else p.value = pct;
+}
+function hideDialogStatus() {
+  const s = document.getElementById('confirm-status');
+  if (s) s.hidden = true;
+}
+
+// XHR で multipart 送信。アップロード % を progress に反映。
+// 戻り値: { status, body, isNetworkError, isTimeout }
+function xhrPost(url, fd, { onProgress, onSlow } = {}) {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    let slowTimer = null;
+    if (onSlow) slowTimer = setTimeout(onSlow, 20000);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (slowTimer) clearTimeout(slowTimer);
+      resolve({ status: xhr.status, body: xhr.responseText });
+    };
+    xhr.onerror = () => {
+      if (slowTimer) clearTimeout(slowTimer);
+      resolve({ status: 0, body: '', isNetworkError: true });
+    };
+    xhr.ontimeout = () => {
+      if (slowTimer) clearTimeout(slowTimer);
+      resolve({ status: 0, body: '', isTimeout: true });
+    };
+    xhr.send(fd);
+  });
+}
+
 async function actuallySubmit(snap) {
   if (currentEventId == null) return;
 
-  const fd = new FormData();
-  fd.append('xId', snap.xId);
-  fd.append('submitName', snap.submitName);
-  fd.append('score', snap.score);
-  if (snap.exScore !== '') {
-    fd.append('exScore', snap.exScore);
-  }
-  if (snap.imageFile) {
-    fd.append('image', snap.imageFile);
-  }
-
+  _uploading = true;
+  confirmOkBtn.disabled = true;
+  confirmCancelBtn.disabled = true;
   btn.disabled = true;
-  resultEl.textContent = tt('common.error.sending');
-  resultEl.className = 'result info';
 
-  try {
-    const res = await fetch(`/api/events/${currentEventId}/scores`, {
-      method: 'POST',
-      body: fd,
+  // 元画像 (iPhone 撮影で 10-20MB 級になることがある) を 1600px / JPEG 0.85 に
+  // 縮小してから送る。OCR 用と同じ前処理。
+  setDialogStatus(tt('weepa.score.upload.preparing'), 'info');
+  setDialogProgress(0);
+  let imageToSend = snap.imageFile;
+  if (imageToSend) {
+    try { imageToSend = await shrinkImageForRecognize(imageToSend); }
+    catch { imageToSend = snap.imageFile; }
+  }
+
+  function buildFormData() {
+    const fd = new FormData();
+    fd.append('xId', snap.xId);
+    fd.append('submitName', snap.submitName);
+    fd.append('score', snap.score);
+    if (snap.exScore !== '') fd.append('exScore', snap.exScore);
+    if (imageToSend) fd.append('image', imageToSend);
+    return fd;
+  }
+
+  let slowShown = false;
+  let processing = false;
+  async function trySend(label) {
+    slowShown = false;
+    processing = false;
+    setDialogStatus(label, 'info');
+    setDialogProgress(0);
+    return xhrPost(`/api/events/${currentEventId}/scores`, buildFormData(), {
+      onProgress: (pct) => {
+        if (pct >= 100) {
+          // アップロード自体は完了 → サーバー処理待ち。バーは不定形に切替
+          processing = true;
+          setDialogProgress(null);
+          setDialogStatus(tt('weepa.score.upload.processing'), 'info');
+          return;
+        }
+        setDialogProgress(pct);
+        if (!slowShown) setDialogStatus(`${label} ${pct}%`, 'info');
+      },
+      onSlow: () => {
+        if (processing) return;
+        slowShown = true;
+        setDialogStatus(tt('weepa.score.upload.slow'), 'info');
+      },
     });
+  }
 
-    if (res.ok) {
-      resultEl.textContent = tt('weepa.score.submit.ok');
-      resultEl.className = 'result ok';
-      saveUserProfile({ xId: snap.xId, submitName: snap.submitName });
-      form.reset();
-      prefillUserFields();
-      setPreview(null);
-      setRecognizeStatus('', '');
-    } else if (res.status === 400) {
-      const data = await res.json().catch(() => ({}));
-      mapServerErrors(data.errors);
-      resultEl.textContent = data.message ?? tt('common.error.validation');
-      resultEl.className = 'result ng';
-      scrollToFirstError();
-    } else if (res.status === 413) {
-      resultEl.textContent = tt('weepa.score.submit.413');
-      resultEl.className = 'result ng';
-    } else {
-      resultEl.textContent = `${tt('common.error.send')} (HTTP ${res.status})`;
-      resultEl.className = 'result ng';
+  let res;
+  try {
+    res = await trySend(`${tt('weepa.score.upload.progress')}...`);
+    // 408 のみ自動リトライ。nginx がリクエストボディを読み切れずに弾いた状態なので
+    // サーバー側は処理していない (= 二重投稿のリスクなし)。
+    // ネットワークエラーは「実は成功したけど応答だけ届かなかった」可能性が消せないので
+    // 自動リトライしない (ダイアログは開いたままなので、ユーザーが意図して再押下できる)。
+    if (res.status === 408) {
+      setDialogStatus(tt('weepa.score.upload.retrying'), 'info');
+      res = await trySend(tt('weepa.score.upload.retrying'));
     }
-  } catch (err) {
-    resultEl.textContent = `${tt('common.error.network')}: ${err.message}`;
-    resultEl.className = 'result ng';
   } finally {
+    _uploading = false;
+    confirmCancelBtn.disabled = false;
     btn.disabled = false;
+  }
+
+  if (res.status >= 200 && res.status < 300) {
+    // 成功 → ダイアログを閉じ、メインに ✓ を出す
+    hideDialogStatus();
+    confirmOkBtn.disabled = false;
+    dialog.close();
+    resultEl.textContent = tt('weepa.score.submit.ok');
+    resultEl.className = 'result ok';
+    saveUserProfile({ xId: snap.xId, submitName: snap.submitName });
+    form.reset();
+    prefillUserFields();
+    setPreview(null);
+    setRecognizeStatus('', '');
     resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  if (res.status === 400) {
+    // バリデーションエラー → フォーム側に出す方が分かりやすいのでダイアログを閉じる
+    let data = {};
+    try { data = JSON.parse(res.body); } catch { /* ignore */ }
+    mapServerErrors(data.errors);
+    hideDialogStatus();
+    confirmOkBtn.disabled = false;
+    dialog.close();
+    resultEl.textContent = data.message ?? tt('common.error.validation');
+    resultEl.className = 'result ng';
+    scrollToFirstError();
+    return;
+  }
+
+  // ネットワーク系・サーバー系エラー: ダイアログは開いたまま、その場で「投稿する」再押下で再試行可能
+  confirmOkBtn.disabled = false;
+  if (res.status === 413) {
+    setDialogStatus(tt('weepa.score.submit.413'), 'ng');
+  } else if (res.status === 408 || res.isTimeout) {
+    setDialogStatus(tt('weepa.score.upload.timeout'), 'ng');
+  } else if (res.isNetworkError || res.status === 0) {
+    setDialogStatus(tt('common.error.network'), 'ng');
+  } else {
+    setDialogStatus(`${tt('common.error.send')} (HTTP ${res.status})`, 'ng');
   }
 }
 
@@ -383,12 +506,22 @@ form.addEventListener('submit', (ev) => {
   if (currentEventId == null) return;
   const snap = getFormSnapshot();
   renderConfirm(snap);
+  hideDialogStatus();
   dialog.showModal();
 });
 
-confirmCancelBtn.addEventListener('click', () => dialog.close());
+confirmCancelBtn.addEventListener('click', () => {
+  if (_uploading) return; // アップロード中は閉じさせない
+  dialog.close();
+});
+
+// ESC キーでのキャンセルも、アップロード中だけブロック
+dialog.addEventListener('cancel', (ev) => {
+  if (_uploading) ev.preventDefault();
+});
 
 confirmOkBtn.addEventListener('click', async () => {
-  dialog.close();
+  if (_uploading) return; // 二重押下ガード
+  // 投稿完了するまでダイアログを閉じない (actuallySubmit が成功時のみ close する)
   await actuallySubmit(getFormSnapshot());
 });

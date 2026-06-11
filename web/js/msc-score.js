@@ -15,6 +15,38 @@ const MAX_PLAYS = 4;
 
 const tt = (k) => (window.i18n && window.i18n.t) ? window.i18n.t(k) : k;
 
+// iPhone 撮影など大きい画像 (4MB 超) を長辺 1600px / JPEG 0.85 に縮小して
+// 送信する。元のままだとモバイル回線で nginx の client_body_timeout (デフォ 60s)
+// に引っかかる。WeePA score.js の同名関数と同じ実装。
+async function shrinkImageForUpload(file) {
+  const MAX_DIM = 1600;
+  const QUALITY = 0.85;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = () => reject(new Error('image load failed'));
+      im.src = url;
+    });
+    const ratio = Math.min(1, MAX_DIM / Math.max(img.naturalWidth, img.naturalHeight));
+    if (ratio === 1 && file.size <= 4 * 1024 * 1024) {
+      return file;
+    }
+    const w = Math.round(img.naturalWidth * ratio);
+    const h = Math.round(img.naturalHeight * ratio);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', QUALITY));
+    if (!blob) return file;
+    return new File([blob], 'upload.jpg', { type: 'image/jpeg' });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 let currentEvent = null;
 let songCount = 0;
 
@@ -425,54 +457,185 @@ function renderConfirm(snap) {
   }
 }
 
+// 確認ダイアログ内のステータス表示。投稿完了するまでダイアログを閉じない。
+let _uploading = false;
+function ensureDialogStatus() {
+  let s = document.getElementById('confirm-status');
+  if (s) return s;
+  s = document.createElement('div');
+  s.id = 'confirm-status';
+  s.className = 'confirm-status';
+  s.hidden = true;
+  s.innerHTML = '<p class="confirm-status-text"></p><progress id="upload-progress" class="upload-progress" max="100" value="0"></progress>';
+  const actions = dialog.querySelector('.dialog-actions');
+  actions.parentNode.insertBefore(s, actions);
+  return s;
+}
+function setDialogStatus(text, cls) {
+  const s = ensureDialogStatus();
+  s.hidden = false;
+  s.querySelector('.confirm-status-text').textContent = text;
+  s.className = 'confirm-status ' + (cls || '');
+}
+// pct=null で不定形 (アニメーション) 表示。アップロード完了後のサーバー処理待ちで使う。
+function setDialogProgress(pct) {
+  const p = document.getElementById('upload-progress');
+  if (!p) return;
+  if (pct == null) p.removeAttribute('value');
+  else p.value = pct;
+}
+function hideDialogStatus() {
+  const s = document.getElementById('confirm-status');
+  if (s) s.hidden = true;
+}
+
+function xhrPost(url, fd, { onProgress, onSlow } = {}) {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    let slowTimer = null;
+    if (onSlow) slowTimer = setTimeout(onSlow, 20000);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (slowTimer) clearTimeout(slowTimer);
+      resolve({ status: xhr.status, body: xhr.responseText });
+    };
+    xhr.onerror = () => {
+      if (slowTimer) clearTimeout(slowTimer);
+      resolve({ status: 0, body: '', isNetworkError: true });
+    };
+    xhr.ontimeout = () => {
+      if (slowTimer) clearTimeout(slowTimer);
+      resolve({ status: 0, body: '', isTimeout: true });
+    };
+    xhr.send(fd);
+  });
+}
+
 async function actuallySubmit(snap) {
   if (!currentEvent) return;
-  const fd = new FormData();
-  fd.append('xId', snap.xId);
-  fd.append('submitName', snap.submitName);
-  fd.append('platform', snap.platform);
-  fd.append('plays', JSON.stringify(snap.plays));
-  if (snap.imageSummary) fd.append('imageSummary', snap.imageSummary);
+
+  _uploading = true;
+  confirmOkBtn.disabled = true;
+  confirmCancelBtn.disabled = true;
+  btn.disabled = true;
+
+  // 全画像 (summary + 各 play) を 1600px / JPEG 0.85 に縮小してから送る。
+  setDialogStatus(tt('weepa.score.upload.preparing'), 'info');
+  setDialogProgress(0);
+
+  let summaryToSend = snap.imageSummary;
+  if (summaryToSend) {
+    try { summaryToSend = await shrinkImageForUpload(summaryToSend); }
+    catch { summaryToSend = snap.imageSummary; }
+  }
+  const playsToSend = [null];
   for (let i = 1; i <= MAX_PLAYS; i++) {
-    if (snap.playImages[i]) fd.append(`imagePlay${i}`, snap.playImages[i]);
+    let f = snap.playImages[i];
+    if (f) {
+      try { f = await shrinkImageForUpload(f); }
+      catch { /* keep original */ }
+    }
+    playsToSend.push(f);
   }
 
-  btn.disabled = true;
-  resultEl.textContent = tt('common.error.sending');
-  resultEl.className = 'result info';
-  try {
-    const res = await fetch(`/api/msc/events/${currentEvent.mscEventId}/submissions`, {
-      method: 'POST',
-      body: fd,
-    });
-    if (res.ok) {
-      resultEl.textContent = tt('msc.score.submit.ok');
-      resultEl.className = 'result ok';
-      saveUserProfile({ xId: snap.xId, submitName: snap.submitName });
-      form.reset();
-      initPlays();
-      updatePlatformView();
-      prefillUserFields();
-    } else if (res.status === 400) {
-      const data = await res.json().catch(() => ({}));
-      const msg = data?.message
-        || (data?.errors ? Object.values(data.errors).flat().join(' / ') : '')
-        || `${tt('msc.score.validation.input-error')} (HTTP 400)`;
-      resultEl.textContent = msg;
-      resultEl.className = 'result ng';
-    } else if (res.status === 413) {
-      resultEl.textContent = tt('msc.score.submit.413');
-      resultEl.className = 'result ng';
-    } else {
-      resultEl.textContent = `${tt('msc.score.submit.fail')} (HTTP ${res.status})`;
-      resultEl.className = 'result ng';
+  function buildFormData() {
+    const fd = new FormData();
+    fd.append('xId', snap.xId);
+    fd.append('submitName', snap.submitName);
+    fd.append('platform', snap.platform);
+    fd.append('plays', JSON.stringify(snap.plays));
+    if (summaryToSend) fd.append('imageSummary', summaryToSend);
+    for (let i = 1; i <= MAX_PLAYS; i++) {
+      if (playsToSend[i]) fd.append(`imagePlay${i}`, playsToSend[i]);
     }
-  } catch (err) {
-    resultEl.textContent = `${tt('common.error.network')}: ${err.message}`;
-    resultEl.className = 'result ng';
+    return fd;
+  }
+
+  let slowShown = false;
+  let processing = false;
+  async function trySend(label) {
+    slowShown = false;
+    processing = false;
+    setDialogStatus(label, 'info');
+    setDialogProgress(0);
+    return xhrPost(`/api/msc/events/${currentEvent.mscEventId}/submissions`, buildFormData(), {
+      onProgress: (pct) => {
+        if (pct >= 100) {
+          processing = true;
+          setDialogProgress(null);
+          setDialogStatus(tt('weepa.score.upload.processing'), 'info');
+          return;
+        }
+        setDialogProgress(pct);
+        if (!slowShown) setDialogStatus(`${label} ${pct}%`, 'info');
+      },
+      onSlow: () => {
+        if (processing) return;
+        slowShown = true;
+        setDialogStatus(tt('weepa.score.upload.slow'), 'info');
+      },
+    });
+  }
+
+  let res;
+  try {
+    res = await trySend(`${tt('weepa.score.upload.progress')}...`);
+    // 408 のみ自動リトライ (nginx 段階で弾かれており二重投稿リスクなし)。
+    // ネットワークエラーはサーバーが処理した可能性が消せないので、自動リトライしない。
+    if (res.status === 408) {
+      setDialogStatus(tt('weepa.score.upload.retrying'), 'info');
+      res = await trySend(tt('weepa.score.upload.retrying'));
+    }
   } finally {
+    _uploading = false;
+    confirmCancelBtn.disabled = false;
     btn.disabled = false;
+  }
+
+  if (res.status >= 200 && res.status < 300) {
+    hideDialogStatus();
+    confirmOkBtn.disabled = false;
+    dialog.close();
+    resultEl.textContent = tt('msc.score.submit.ok');
+    resultEl.className = 'result ok';
+    saveUserProfile({ xId: snap.xId, submitName: snap.submitName });
+    form.reset();
+    initPlays();
+    updatePlatformView();
+    prefillUserFields();
     resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  if (res.status === 400) {
+    let data = {};
+    try { data = JSON.parse(res.body); } catch { /* ignore */ }
+    const msg = data?.message
+      || (data?.errors ? Object.values(data.errors).flat().join(' / ') : '')
+      || `${tt('msc.score.validation.input-error')} (HTTP 400)`;
+    hideDialogStatus();
+    confirmOkBtn.disabled = false;
+    dialog.close();
+    resultEl.textContent = msg;
+    resultEl.className = 'result ng';
+    return;
+  }
+
+  // ネットワーク・サーバー系: ダイアログは開いたまま再試行可能
+  confirmOkBtn.disabled = false;
+  if (res.status === 413) {
+    setDialogStatus(tt('msc.score.submit.413'), 'ng');
+  } else if (res.status === 408 || res.isTimeout) {
+    setDialogStatus(tt('weepa.score.upload.timeout'), 'ng');
+  } else if (res.isNetworkError || res.status === 0) {
+    setDialogStatus(tt('common.error.network'), 'ng');
+  } else {
+    setDialogStatus(`${tt('msc.score.submit.fail')} (HTTP ${res.status})`, 'ng');
   }
 }
 
@@ -486,12 +649,21 @@ form.addEventListener('submit', (ev) => {
     return;
   }
   renderConfirm(snap);
+  hideDialogStatus();
   dialog.showModal();
 });
 
-confirmCancelBtn.addEventListener('click', () => dialog.close());
+confirmCancelBtn.addEventListener('click', () => {
+  if (_uploading) return; // アップロード中は閉じさせない
+  dialog.close();
+});
+
+dialog.addEventListener('cancel', (ev) => {
+  if (_uploading) ev.preventDefault();
+});
 
 confirmOkBtn.addEventListener('click', async () => {
-  dialog.close();
+  if (_uploading) return; // 二重押下ガード
+  // 投稿完了するまでダイアログを閉じない
   await actuallySubmit(collectSnapshot());
 });

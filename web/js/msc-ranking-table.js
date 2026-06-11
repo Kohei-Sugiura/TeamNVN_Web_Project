@@ -12,9 +12,11 @@
   function formatScore(n) {
     return Number(n).toLocaleString('en-US');
   }
+  // 閲覧者のタイムゾーンや実行環境に依存しないよう JST 固定 (ranking-table.js と同じ)。
   function formatDateTime(iso) {
     const d = new Date(iso);
     return d.toLocaleString('ja-JP', {
+      timeZone: 'Asia/Tokyo',
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit',
     });
