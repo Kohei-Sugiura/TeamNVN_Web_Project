@@ -38,12 +38,16 @@ public class MscController : ControllerBase
     public MscController(
         NpgsqlDataSource dataSource,
         ILogger<MscController> logger,
-        IDiscordNotifier discord)
+        IDiscordNotifier discord,
+        IConfiguration configuration)
     {
         _dataSource = dataSource;
         _logger = logger;
         _discord = discord;
+        _configuration = configuration;
     }
+
+    private readonly IConfiguration _configuration;
 
     [HttpGet("events/{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
@@ -210,17 +214,21 @@ public class MscController : ControllerBase
     [HttpGet("events/{id:int}/ranking")]
     public async Task<IActionResult> Ranking(int id, CancellationToken ct)
     {
-        // WeePA の /api/events/{id}/ranking と同様、公開チェックは公開ページの
-        // 導線 (events/past) 側でのみ行い、API はランキングデータを純粋に返す。
-        // これにより /admin/msc/preview/ から未公開でも管理者がプレビューできる。
+        // 未公開 (tallied_at IS NULL) のランキングは eventId 直叩きでも見せない。
+        // 管理者 (Basic 認証) は admin プレビュー / Discord スクショ用に閲覧可。
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
 
-        var exists = await conn.ExecuteScalarAsync<int?>(new CommandDefinition(
-            "SELECT 1 FROM msc_events WHERE msc_event_id = @Id",
-            new { Id = id }, cancellationToken: ct));
-        if (exists is null)
+        var ev = await conn.QuerySingleOrDefaultAsync<(int EventId, DateTimeOffset? TalliedAt)>(
+            new CommandDefinition(
+                "SELECT msc_event_id, tallied_at FROM msc_events WHERE msc_event_id = @Id",
+                new { Id = id }, cancellationToken: ct));
+        if (ev.EventId == 0)
         {
             return NotFound(new { message = "イベントが見つかりません" });
+        }
+        if (ev.TalliedAt is null && !Validation.AdminBasicAuth.IsAuthorized(Request, _configuration))
+        {
+            return NotFound(new { message = "集計結果はまだ公開されていません" });
         }
 
         // 各 submission の合計 (各 song_order の MAX score を合算) を出し、

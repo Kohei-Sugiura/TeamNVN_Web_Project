@@ -5,17 +5,20 @@ namespace Weepa.Api.Services;
 /// <summary>
 /// Puppeteer (Chromium) を使ってランキング画面を PNG 化するサービス。
 /// 内部ポート (http://nginx:8081) 経由でランキングページを開いてスクショする。
-/// 公開/非公開どちらの集計結果でも eventId 直指定なら表示できる仕様を利用。
+/// 未公開ランキングの API は管理者認証が必要なため、ページのリクエストに
+/// 管理者 Basic 認証ヘッダーを付けて開く (公開前でも画像化できる)。
 /// </summary>
 public sealed class RankingScreenshot : IAsyncDisposable
 {
     private readonly ILogger<RankingScreenshot> _logger;
+    private readonly IConfiguration _configuration;
     private readonly SemaphoreSlim _launchLock = new(1, 1);
     private IBrowser? _browser;
 
-    public RankingScreenshot(ILogger<RankingScreenshot> logger)
+    public RankingScreenshot(ILogger<RankingScreenshot> logger, IConfiguration configuration)
     {
         _logger = logger;
+        _configuration = configuration;
     }
 
     private async Task<IBrowser> GetBrowserAsync()
@@ -59,6 +62,17 @@ public sealed class RankingScreenshot : IAsyncDisposable
         var page = await browser.NewPageAsync();
         try
         {
+            // 未公開ランキング API へのアクセス用に管理者 Basic 認証を付与
+            // (ページ内の fetch にも適用される)
+            var auth = Weepa.Api.Validation.AdminBasicAuth.BuildHeaderValue(_configuration);
+            if (auth is not null)
+            {
+                await page.SetExtraHttpHeadersAsync(new Dictionary<string, string>
+                {
+                    ["Authorization"] = auth,
+                });
+            }
+
             // MSC ランキングは曲数によって幅が変わるので余裕を持って広めに。
             // .screenshot-mode で width: max-content にすると、コンテナは内容に
             // ぴったり収まるサイズで描画される (viewport は上限としてだけ機能)。

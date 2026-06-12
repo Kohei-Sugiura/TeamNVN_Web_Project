@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using Weepa.Api.Models.Responses;
+using Weepa.Api.Validation;
 
 namespace Weepa.Api.Controllers;
 
@@ -11,10 +12,13 @@ public class EventsController : ControllerBase
 {
     private readonly NpgsqlDataSource _dataSource;
 
-    public EventsController(NpgsqlDataSource dataSource)
+    public EventsController(NpgsqlDataSource dataSource, IConfiguration configuration)
     {
         _dataSource = dataSource;
+        _configuration = configuration;
     }
+
+    private readonly IConfiguration _configuration;
 
     [HttpGet("recent")]
     public async Task<IActionResult> Recent(
@@ -138,6 +142,23 @@ public class EventsController : ControllerBase
     [HttpGet("{id:int}/ranking")]
     public async Task<IActionResult> Ranking(int id, CancellationToken ct)
     {
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+
+        // 未公開 (tallied_at IS NULL) のランキングは eventId 直叩きでも見せない。
+        // 管理者 (Basic 認証) は admin プレビュー / Discord スクショ用に閲覧可。
+        var ev = await conn.QuerySingleOrDefaultAsync<(int EventId, DateTimeOffset? TalliedAt)>(
+            new CommandDefinition(
+                "SELECT weepa_event_id, tallied_at FROM weepa_events WHERE weepa_event_id = @Id",
+                new { Id = id }, cancellationToken: ct));
+        if (ev.EventId == 0)
+        {
+            return NotFound(new { message = "イベントが見つかりません" });
+        }
+        if (ev.TalliedAt is null && !AdminBasicAuth.IsAuthorized(Request, _configuration))
+        {
+            return NotFound(new { message = "集計結果はまだ公開されていません" });
+        }
+
         // スコアと EX スコアは別々のプレーで自己ベストになることがあるため、
         // それぞれ独立に MAX を採用する (同一投稿に縛らない)。
         const string sql = """
@@ -197,7 +218,6 @@ public class EventsController : ControllerBase
             ORDER BY "Rank"
             """;
 
-        await using var conn = await _dataSource.OpenConnectionAsync(ct);
         var entries = await conn.QueryAsync<RankingEntry>(
             new CommandDefinition(sql, new { EventId = id }, cancellationToken: ct));
 

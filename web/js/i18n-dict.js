@@ -133,6 +133,7 @@ window.I18N_DICT = {
     'ranking.col.song': '楽曲',
     'ranking.col.effect': '譜面種',
     'ranking.col.period': '開催期間',
+    'ranking.not-published': 'このイベントの集計結果はまだ公開されていません。',
 
     // 履歴
     'history.title': 'WeePA 開催履歴',
@@ -339,6 +340,7 @@ window.I18N_DICT = {
     'ranking.col.song': '곡',
     'ranking.col.effect': '난이도',
     'ranking.col.period': '개최 기간',
+    'ranking.not-published': '이 이벤트의 집계 결과는 아직 공개되지 않았습니다.',
 
     // 이력
     'history.title': 'WeePA 개최 이력',
