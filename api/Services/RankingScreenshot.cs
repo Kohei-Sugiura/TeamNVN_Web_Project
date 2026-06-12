@@ -62,15 +62,38 @@ public sealed class RankingScreenshot : IAsyncDisposable
         var page = await browser.NewPageAsync();
         try
         {
-            // 未公開ランキング API へのアクセス用に管理者 Basic 認証を付与
-            // (ページ内の fetch にも適用される)
+            // 未公開ランキング API 用に管理者 Basic 認証を付与するが、
+            // 内部 (http://nginx:8081) 宛のリクエストにだけ付ける。
+            // SetExtraHttpHeaders で全リクエストに付けると Google Fonts
+            // (fonts.gstatic.com) が Authorization 付きで 404 になり、Web
+            // フォントがロードできず別フォントで描画されてしまうため
+            // (= スクショだけ見た目が変わる不具合)。
             var auth = Weepa.Api.Validation.AdminBasicAuth.BuildHeaderValue(_configuration);
             if (auth is not null)
             {
-                await page.SetExtraHttpHeadersAsync(new Dictionary<string, string>
+                await page.SetRequestInterceptionAsync(true);
+                page.Request += async (_, e) =>
                 {
-                    ["Authorization"] = auth,
-                });
+                    try
+                    {
+                        if (e.Request.Url.StartsWith("http://nginx:8081", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var headers = new Dictionary<string, string>(e.Request.Headers)
+                            {
+                                ["Authorization"] = auth,
+                            };
+                            await e.Request.ContinueAsync(new Payload { Headers = headers });
+                        }
+                        else
+                        {
+                            await e.Request.ContinueAsync();
+                        }
+                    }
+                    catch
+                    {
+                        // 競合で既に処理済み等は無視
+                    }
+                };
             }
 
             // MSC ランキングは曲数によって幅が変わるので余裕を持って広めに。
