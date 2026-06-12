@@ -62,6 +62,7 @@ const TABLES = {
             { key: 'submitName', label: 'submit_name', type: 'text', required: true },
             { key: 'score', label: 'score', type: 'number', required: true, min: 0, max: 10000000 },
             { key: 'exScore', label: 'ex_score', type: 'nullable-number' },
+            { key: 'tier', label: 'tier', type: 'number', min: 1, max: 3 },
             { key: 'imagePath', label: 'image_path', type: 'text' },
             { key: 'submitDate', label: 'submit_date', type: 'datetime' },
             { key: 'approvalStatus', label: 'status', type: 'status' },

@@ -119,9 +119,9 @@ public class ScoresController : ControllerBase
         // 5. DB 挿入 (submit_id トリガー衝突時は最大3回リトライ)
         const string insertSql = """
             INSERT INTO weepa_scores
-                (weepa_event_id, x_id, submit_name, score, ex_score, image_path)
+                (weepa_event_id, x_id, submit_name, score, ex_score, image_path, tier)
             VALUES
-                (@EventId, @XId, @SubmitName, @Score, @ExScore, @ImagePath)
+                (@EventId, @XId, @SubmitName, @Score, @ExScore, @ImagePath, @Tier)
             RETURNING submit_id
             """;
 
@@ -140,6 +140,7 @@ public class ScoresController : ControllerBase
                         request.Score,
                         request.ExScore,
                         ImagePath = publicImagePath,
+                        request.Tier,
                     },
                     cancellationToken: ct));
                 break;
@@ -169,6 +170,7 @@ public class ScoresController : ControllerBase
             request.SubmitName,
             request.Score,
             request.ExScore,
+            request.Tier!.Value,
             eventState.Song,
             eventState.Effect,
             fullPath,

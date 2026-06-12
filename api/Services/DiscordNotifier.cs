@@ -21,6 +21,7 @@ public sealed record ScoreSubmittedNotification(
     string SubmitName,
     int Score,
     int? ExScore,
+    int Tier,
     string Song,
     string Effect,
     string ImageFilePath,
@@ -168,6 +169,7 @@ internal sealed class DiscordNotifier : IDiscordNotifier
                     {
                         new { name = "イベント", value = $"{Truncate(n.Song, 200)} ({n.Effect})", inline = false },
                         new { name = "投稿者", value = $"{Truncate(n.SubmitName, 80)} (@{n.XId})", inline = false },
+                        new { name = "部門", value = TierName(n.Tier), inline = false },
                         new { name = "Score", value = n.Score.ToString("N0", CultureInfo.InvariantCulture), inline = true },
                         new { name = "EX",    value = n.ExScore?.ToString("N0", CultureInfo.InvariantCulture) ?? "-", inline = true },
                     },
@@ -392,4 +394,12 @@ internal sealed class DiscordNotifier : IDiscordNotifier
 
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : s.Substring(0, max - 1) + "…";
+
+    private static string TierName(int tier) => tier switch
+    {
+        1 => "ストイック部門",
+        2 => "チャレンジ部門",
+        3 => "カジュアル部門",
+        _ => $"部門{tier}",
+    };
 }

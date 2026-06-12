@@ -80,6 +80,9 @@ CREATE TABLE weepa_scores (
     image_path      TEXT NOT NULL,
     submit_date     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     approval_status SMALLINT NOT NULL DEFAULT 0,
+    -- 参加部門: 1=ストイック(EXスコア) / 2=チャレンジ(PUC) / 3=カジュアル(自己ベスト)
+    -- プレイヤーの所属部門は「最後の投稿」の tier で決まる (スコア集計は部門横断で MAX)
+    tier            SMALLINT NOT NULL DEFAULT 1 CHECK (tier BETWEEN 1 AND 3),
 
     PRIMARY KEY (weepa_event_id, x_id, submit_id)
 );

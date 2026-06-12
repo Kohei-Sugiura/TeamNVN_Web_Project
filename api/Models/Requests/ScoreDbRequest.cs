@@ -8,6 +8,7 @@ public sealed class ScoreDbRequest
     public string? SubmitName { get; set; }
     public int? Score { get; set; }
     public int? ExScore { get; set; }
+    public short? Tier { get; set; }
     public string? ImagePath { get; set; }
     public DateTimeOffset? SubmitDate { get; set; }
     public short? ApprovalStatus { get; set; }

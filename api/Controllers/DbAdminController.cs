@@ -308,6 +308,7 @@ public class DbAdminController : ControllerBase
                 sc.submit_name    AS "submitName",
                 sc.score          AS "score",
                 sc.ex_score       AS "exScore",
+                sc.tier           AS "tier",
                 sc.image_path     AS "imagePath",
                 sc.submit_date    AS "submitDate",
                 sc.approval_status AS "approvalStatus",
@@ -334,9 +335,10 @@ public class DbAdminController : ControllerBase
 
         const string sql = """
             INSERT INTO weepa_scores
-                (weepa_event_id, x_id, submit_id, submit_name, score, ex_score, image_path, submit_date, approval_status)
+                (weepa_event_id, x_id, submit_id, submit_name, score, ex_score, tier, image_path, submit_date, approval_status)
             VALUES
                 (@WeepaEventId, @XId, @SubmitId, @SubmitName, @Score, @ExScore,
+                 COALESCE(@Tier, 1),
                  COALESCE(@ImagePath, ''),
                  COALESCE(@SubmitDate, NOW()),
                  COALESCE(@ApprovalStatus, 0))
@@ -358,6 +360,7 @@ public class DbAdminController : ControllerBase
                     request.SubmitName,
                     request.Score,
                     request.ExScore,
+                    request.Tier,
                     request.ImagePath,
                     SubmitDate = request.SubmitDate?.ToUniversalTime(),
                     request.ApprovalStatus,
@@ -387,6 +390,7 @@ public class DbAdminController : ControllerBase
                 submit_name     = COALESCE(@SubmitName, submit_name),
                 score           = COALESCE(@Score, score),
                 ex_score        = COALESCE(@ExScore, ex_score),
+                tier            = COALESCE(@Tier, tier),
                 image_path      = COALESCE(@ImagePath, image_path),
                 submit_date     = COALESCE(@SubmitDate, submit_date),
                 approval_status = COALESCE(@ApprovalStatus, approval_status)
@@ -408,6 +412,7 @@ public class DbAdminController : ControllerBase
                     request.SubmitName,
                     request.Score,
                     request.ExScore,
+                    request.Tier,
                     request.ImagePath,
                     SubmitDate = request.SubmitDate?.ToUniversalTime(),
                     request.ApprovalStatus,

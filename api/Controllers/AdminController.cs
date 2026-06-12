@@ -263,6 +263,7 @@ public class AdminController : ControllerBase
                 sc.submit_name    AS "submitName",
                 sc.score          AS "score",
                 sc.ex_score       AS "exScore",
+                sc.tier           AS "tier",
                 sc.submit_date    AS "submitDate",
                 sc.image_path     AS "imagePath",
                 so.song           AS "song",

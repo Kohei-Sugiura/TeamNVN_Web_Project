@@ -31,9 +31,19 @@ function renderEventHeader(ev) {
   `;
 }
 
+// ?tier=1|2|3 が付いていたらタブ無しでその部門のみ表示
+// (Discord の部門別スクショと結果共有リンク用)
+function tierViewFromQuery() {
+  const v = Number(new URLSearchParams(window.location.search).get('tier'));
+  return (v >= 1 && v <= 3) ? v : null;
+}
+
 function renderRanking(entries, ev) {
   rankingSection.hidden = false;
-  renderRankingTable(rankingDisplay, entries, { exScoreMax: ev?.exScoreMax });
+  renderRankingTable(rankingDisplay, entries, {
+    exScoreMax: ev?.exScoreMax,
+    tierView: tierViewFromQuery(),
+  });
 }
 
 function showEventError(message) {

@@ -19,6 +19,10 @@ public sealed class ScoreSubmissionRequest
     [Range(0, int.MaxValue, ErrorMessage = "EXスコアは 0 以上の整数で入力してください")]
     public int? ExScore { get; set; }
 
+    [Required(ErrorMessage = "参加部門を選択してください")]
+    [Range(1, 3, ErrorMessage = "参加部門の値が不正です")]
+    public int? Tier { get; set; }
+
     [Required(ErrorMessage = "リザルト画像は必須です")]
     public IFormFile Image { get; set; } = null!;
 }

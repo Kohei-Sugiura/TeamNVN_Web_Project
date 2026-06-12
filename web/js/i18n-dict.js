@@ -121,6 +121,19 @@ window.I18N_DICT = {
     'weepa.score.upload.retrying': 'タイムアウトしました。自動で再試行しています...',
     'weepa.score.upload.timeout': 'タイムアウトしました。通信状況をご確認のうえ、もう一度お試しください。',
 
+    // WeePA 参加部門 (Tier)
+    'weepa.tier.label': '参加部門',
+    'weepa.tier.1.name': 'ストイック部門',
+    'weepa.tier.1.desc': '内部精度重視。EXスコアで競う',
+    'weepa.tier.2.name': 'チャレンジ部門',
+    'weepa.tier.2.desc': 'PUC を目指す。スコアで競う',
+    'weepa.tier.3.name': 'カジュアル部門',
+    'weepa.tier.3.desc': '自己ベストを目指して気軽に参加',
+    'weepa.tier.hint': '複数回投稿した場合は、最後に選んだ部門で集計されます。',
+    'weepa.tier.validation': '参加部門を選択してください',
+    'weepa.score.field.tier': '参加部門',
+    'weepa.score.hint.xid-identity': '同一人物の判定は X (Twitter) ID で行います。途中で ID を変えると別人扱いになります。',
+
     // ランキング
     'ranking.title': '集計結果',
     'ranking.section.ranking': 'ランキング',
@@ -133,6 +146,9 @@ window.I18N_DICT = {
     'ranking.col.song': '楽曲',
     'ranking.col.effect': '譜面種',
     'ranking.col.period': '開催期間',
+    'ranking.col.improve': '自己べ更新',
+    'ranking.tier3.note': '「自己べ更新」は同一イベント内の最初の投稿スコアとの差分です。X (Twitter) ID が変わると別人扱いになります。',
+    'ranking.tier.empty': 'この部門の参加者はまだいません。',
 
     // 履歴
     'history.title': 'WeePA 開催履歴',
@@ -327,6 +343,19 @@ window.I18N_DICT = {
     'weepa.score.upload.retrying': '시간 초과되었습니다. 자동으로 재시도하고 있습니다...',
     'weepa.score.upload.timeout': '시간 초과되었습니다. 통신 상태를 확인 후 다시 시도해 주세요.',
 
+    // WeePA 참가 부문 (Tier)
+    'weepa.tier.label': '참가 부문',
+    'weepa.tier.1.name': '스토익 부문',
+    'weepa.tier.1.desc': '내부 정확도 중시. EX 스코어로 경쟁',
+    'weepa.tier.2.name': '챌린지 부문',
+    'weepa.tier.2.desc': 'PUC를 목표. 스코어로 경쟁',
+    'weepa.tier.3.name': '캐주얼 부문',
+    'weepa.tier.3.desc': '자기 베스트를 목표로 부담 없이 참가',
+    'weepa.tier.hint': '여러 번 등록한 경우 마지막에 선택한 부문으로 집계됩니다.',
+    'weepa.tier.validation': '참가 부문을 선택해 주세요',
+    'weepa.score.field.tier': '참가 부문',
+    'weepa.score.hint.xid-identity': '동일인 판정은 X (트위터) ID로 합니다. 도중에 ID를 바꾸면 다른 사람으로 처리됩니다.',
+
     // 랭킹
     'ranking.title': '집계 결과',
     'ranking.section.ranking': '랭킹',
@@ -339,6 +368,9 @@ window.I18N_DICT = {
     'ranking.col.song': '곡',
     'ranking.col.effect': '난이도',
     'ranking.col.period': '개최 기간',
+    'ranking.col.improve': '자기 베스트 갱신',
+    'ranking.tier3.note': '「자기 베스트 갱신」은 같은 이벤트 내 첫 등록 스코어와의 차이입니다. X (트위터) ID가 바뀌면 다른 사람으로 처리됩니다.',
+    'ranking.tier.empty': '이 부문의 참가자가 아직 없습니다.',
 
     // 이력
     'history.title': 'WeePA 개최 이력',

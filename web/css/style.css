@@ -1858,13 +1858,15 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 /* ============================================
  * MSC スコア投稿 — plays grid + platform radio
  * ============================================ */
-.msc-platform-radio {
+.msc-platform-radio,
+.tier-radio {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 6px;
 }
-.msc-platform-radio label {
+.msc-platform-radio label,
+.tier-radio label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1872,11 +1874,50 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   color: #eaeaf0;
   cursor: pointer;
 }
-.msc-platform-radio input[type="radio"] {
+.msc-platform-radio input[type="radio"],
+.tier-radio input[type="radio"] {
   width: auto;
   height: auto;
   margin: 0;
   accent-color: #00e5ff;
+}
+/* WeePA 参加部門ラジオ: 部門名 + 説明 */
+.tier-radio label {
+  flex-wrap: wrap;
+  min-height: 44px;
+  padding: 4px 0;
+}
+.tier-radio .tier-name {
+  font-weight: bold;
+  color: #00e5ff;
+}
+.tier-radio .tier-desc {
+  font-size: 0.85rem;
+  color: #8a8aaa;
+}
+
+/* ランキングの部門タブ (.inner-tabs を流用) */
+.tier-tabs {
+  margin-top: 0;
+}
+/* ?tier=N 単独表示時の部門見出し (スクショに部門名が写るように) */
+.tier-heading {
+  margin: 0 0 12px;
+  font-size: 1.15rem;
+  color: #00e5ff;
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.45);
+}
+.tier-panel .tier-note {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: #8a8aaa;
+}
+td.improve {
+  color: #00e5ff;
+  white-space: nowrap;
+}
+td.improve.zero {
+  color: #8a8aaa;
 }
 
 #msc-plays-list {

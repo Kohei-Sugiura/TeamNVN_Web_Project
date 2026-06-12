@@ -54,11 +54,13 @@ function scoreCard(item) {
         : '<p class="info-row"><span class="label">投稿画像</span><span class="muted">(なし)</span></p>';
 
     const key = `${item.weepaEventId}:${item.xId}:${item.submitId}`;
+    const tierNames = { 1: 'ストイック部門', 2: 'チャレンジ部門', 3: 'カジュアル部門' };
 
     return `
     <article class="admin-item" data-key="${key}">
       <p><strong>${escapeHtml(item.song)}</strong> <span class="effect effect-${(item.effect || '').toLowerCase()}">${escapeHtml(item.effect)}</span></p>
       <p class="info-row"><span class="label">投稿者</span>${escapeHtml(item.submitName)} (@${escapeHtml(item.xId)})</p>
+      <p class="info-row"><span class="label">部門</span>${escapeHtml(tierNames[item.tier] || `部門${item.tier}`)}</p>
       <div class="admin-edit-fields">
         <label>スコア
           <input type="number" class="edit-score" value="${item.score}" min="0" max="10000000">

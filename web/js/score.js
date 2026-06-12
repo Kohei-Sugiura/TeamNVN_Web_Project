@@ -7,9 +7,17 @@ const confirmBody = document.getElementById('confirm-body');
 const confirmOkBtn = document.getElementById('confirm-ok');
 const confirmCancelBtn = document.getElementById('confirm-cancel');
 
-const fieldKeys = ['xId', 'submitName', 'score', 'exScore', 'image'];
+const fieldKeys = ['xId', 'submitName', 'tier', 'score', 'exScore', 'image'];
 
-// X ID + 投稿者名をブラウザに永続化 (localStorage)。submit.js と共通キー。
+function getSelectedTier() {
+  return form.querySelector('input[name="tier"]:checked')?.value || '';
+}
+function setSelectedTier(v) {
+  const r = form.querySelector(`input[name="tier"][value="${v}"]`);
+  if (r) r.checked = true;
+}
+
+// X ID + 投稿者名 + 前回の参加部門をブラウザに永続化 (localStorage)。submit.js と共通キー。
 const USER_PROFILE_KEY = 'weepa_user_profile';
 function loadUserProfile() {
   try { return JSON.parse(localStorage.getItem(USER_PROFILE_KEY) || 'null') || {}; }
@@ -23,6 +31,7 @@ function prefillUserFields() {
   const p = loadUserProfile();
   if (p.xId && !form.xId.value) form.xId.value = p.xId;
   if (p.submitName && !form.submitName.value) form.submitName.value = p.submitName;
+  if (p.tier && !getSelectedTier()) setSelectedTier(p.tier);
 }
 prefillUserFields();
 
@@ -155,10 +164,16 @@ function getFormSnapshot() {
   return {
     xId: form.xId.value.trim(),
     submitName: form.submitName.value.trim(),
+    tier: getSelectedTier(),
     score: form.score.value,
     exScore: form.exScore.value,
     imageFile: form.image.files[0] || null,
   };
+}
+
+function tierLabel(tier) {
+  if (tier !== '1' && tier !== '2' && tier !== '3') return '';
+  return tt(`weepa.tier.${tier}.name`);
 }
 
 function renderConfirm(snap) {
@@ -172,6 +187,8 @@ function renderConfirm(snap) {
       <dd>${snap.xId ? escapeHtml(snap.xId) : empty}</dd>
       <dt>${tt('weepa.score.field.name')}</dt>
       <dd>${snap.submitName ? escapeHtml(snap.submitName) : empty}</dd>
+      <dt>${tt('weepa.score.field.tier')}</dt>
+      <dd>${snap.tier ? escapeHtml(tierLabel(snap.tier)) : unsel}</dd>
       <dt>${tt('weepa.score.field.score')}</dt>
       <dd>${snap.score !== '' ? escapeHtml(formatNum(snap.score)) : empty}</dd>
       <dt>${tt('weepa.score.field.exscore')}</dt>
@@ -280,6 +297,7 @@ async function actuallySubmit(snap) {
     const fd = new FormData();
     fd.append('xId', snap.xId);
     fd.append('submitName', snap.submitName);
+    fd.append('tier', snap.tier);
     fd.append('score', snap.score);
     if (snap.exScore !== '') fd.append('exScore', snap.exScore);
     if (imageToSend) fd.append('image', imageToSend);
@@ -337,7 +355,7 @@ async function actuallySubmit(snap) {
     dialog.close();
     resultEl.textContent = tt('weepa.score.submit.ok');
     resultEl.className = 'result ok';
-    saveUserProfile({ xId: snap.xId, submitName: snap.submitName });
+    saveUserProfile({ xId: snap.xId, submitName: snap.submitName, tier: snap.tier });
     form.reset();
     prefillUserFields();
     setPreview(null);
@@ -505,6 +523,11 @@ form.addEventListener('submit', (ev) => {
   clearErrors();
   if (currentEventId == null) return;
   const snap = getFormSnapshot();
+  if (!snap.tier) {
+    showFieldError('tier', tt('weepa.tier.validation'));
+    scrollToFirstError();
+    return;
+  }
   renderConfirm(snap);
   hideDialogStatus();
   dialog.showModal();

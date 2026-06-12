@@ -47,8 +47,9 @@ public sealed class RankingScreenshot : IAsyncDisposable
         }
     }
 
-    public Task<byte[]> CaptureRankingAsync(int eventId, CancellationToken ct = default) =>
-        CaptureAsync($"/weepa/ranking/?eventId={eventId}", ct);
+    // tier (1-3) 指定時はその部門のみのビュー (?tier=N) を撮る
+    public Task<byte[]> CaptureRankingAsync(int eventId, int? tier = null, CancellationToken ct = default) =>
+        CaptureAsync($"/weepa/ranking/?eventId={eventId}" + (tier is int t ? $"&tier={t}" : ""), ct);
 
     public Task<byte[]> CaptureMscRankingAsync(int eventId, CancellationToken ct = default) =>
         CaptureAsync($"/msc/ranking/?eventId={eventId}", ct);

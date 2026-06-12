@@ -486,12 +486,38 @@ public class DiscordInteractionsController : ControllerBase
                 label = $"直近開催 (event #{targetId})";
             }
 
-            var png = await _shot.CaptureRankingAsync(targetId);
-            await _cmd.FollowUpWithImageAsync(
-                token,
-                $"🏆 集計結果 ({label})",
-                png,
-                $"weepa-result-{targetId}.png");
+            // 部門別に発表する。参加者がいる部門だけスクショを投稿
+            // (所属部門 = 各プレイヤーの最後の投稿の tier)
+            var tierCounts = (await conn.QueryAsync<(int Tier, int Players)>(
+                """
+                SELECT tier AS "Tier", COUNT(*) AS "Players"
+                FROM (
+                    SELECT DISTINCT ON (x_id) x_id, tier
+                    FROM weepa_scores
+                    WHERE weepa_event_id = @Id AND approval_status = 1
+                    ORDER BY x_id, submit_date DESC
+                ) latest
+                GROUP BY tier
+                """,
+                new { Id = targetId })).ToDictionary(r => r.Tier, r => r.Players);
+
+            if (tierCounts.Count == 0)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token, $"🏆 集計結果 ({label}): まだ投稿がありません", ephemeral: true);
+                return;
+            }
+
+            foreach (var tier in new[] { 1, 2, 3 })
+            {
+                if (!tierCounts.ContainsKey(tier)) continue;
+                var png = await _shot.CaptureRankingAsync(targetId, tier);
+                await _cmd.FollowUpWithImageAsync(
+                    token,
+                    $"🏆 集計結果 ({label}) — {TierName(tier)}",
+                    png,
+                    $"weepa-result-{targetId}-tier{tier}.png");
+            }
         }
         catch (Exception ex)
         {
@@ -501,6 +527,14 @@ public class DiscordInteractionsController : ControllerBase
                 ephemeral: true);
         }
     }
+
+    private static string TierName(int tier) => tier switch
+    {
+        1 => "ストイック部門",
+        2 => "チャレンジ部門",
+        3 => "カジュアル部門",
+        _ => $"部門{tier}",
+    };
 
     private async Task HandleWeepaPublishAsync(string token, int? eventId)
     {
