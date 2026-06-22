@@ -149,6 +149,7 @@ window.I18N_DICT = {
     'ranking.col.improve': '自己べ更新',
     'ranking.tier3.note': '「自己べ更新」は同一イベント内の最初の投稿スコアとの差分です。X (Twitter) ID が変わると別人扱いになります。',
     'ranking.tier.empty': 'この部門の参加者はまだいません。',
+    'ranking.not-published': 'このイベントの集計結果はまだ公開されていません。',
 
     // 履歴
     'history.title': 'WeePA 開催履歴',
@@ -371,6 +372,7 @@ window.I18N_DICT = {
     'ranking.col.improve': '자기 베스트 갱신',
     'ranking.tier3.note': '「자기 베스트 갱신」은 같은 이벤트 내 첫 등록 스코어와의 차이입니다. X (트위터) ID가 바뀌면 다른 사람으로 처리됩니다.',
     'ranking.tier.empty': '이 부문의 참가자가 아직 없습니다.',
+    'ranking.not-published': '이 이벤트의 집계 결과는 아직 공개되지 않았습니다.',
 
     // 이력
     'history.title': 'WeePA 개최 이력',

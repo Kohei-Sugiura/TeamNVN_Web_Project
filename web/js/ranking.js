@@ -95,6 +95,13 @@ async function showEventRanking(eventId) {
     renderEventHeader(ev);
 
     const rankRes = await fetch(`/api/events/${eventId}/ranking`);
+    if (rankRes.status === 404) {
+      // 未公開イベント (集計完了前)。存在自体は履歴ページで見えるので
+      // 「未公開」であることだけ伝える
+      rankingSection.hidden = false;
+      rankingDisplay.innerHTML = `<p class="empty">${tt('ranking.not-published')}</p>`;
+      return;
+    }
     if (!rankRes.ok) throw new Error(`HTTP ${rankRes.status}`);
     const entries = await rankRes.json();
     renderRanking(entries, ev);
