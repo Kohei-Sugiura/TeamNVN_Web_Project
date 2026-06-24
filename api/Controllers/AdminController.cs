@@ -99,10 +99,13 @@ public class AdminController : ControllerBase
         }
 
         // 承認時に開催枠 (event) を自動生成し、未開催キュー内の **ランダム位置** に挿入する。
-        // 同一人物が連続投稿しても順番が分散するため。位置 k (0..n) を選び:
+        // 同一人物が連続投稿しても順番が分散するため。位置 k (1..n) を選び:
         //   - k == n の場合: 末尾追加 (既存のスロット計算ロジック)
         //   - k <  n の場合: 位置 k 以降の event を 7 日 forward シフトして
         //                    新規イベントを元の k 番のスロットに入れる
+        // k=0 (最直近=次に開催するイベント) は選ばない。新規承認曲がいきなり次回開催に
+        // ならないようにするため。ただし未来イベントが 1 つも無い (ストック切れ) 場合のみ
+        // 末尾追加 = 唯一の次イベントになるのは許容する。
         var futureEvents = (await conn.QueryAsync<(int weepaEventId, DateTime startDate, DateTime endDate)>(
             new CommandDefinition(
                 """
@@ -117,7 +120,9 @@ public class AdminController : ControllerBase
                 transaction: tx, cancellationToken: ct))).ToList();
 
         var n = futureEvents.Count;
-        var k = Random.Shared.Next(0, n + 1);
+        // n==0: ストック無し → k=0 (末尾追加 = 唯一の次イベント、許容)
+        // n>=1: 最直近 (k=0) を避け 1..n から選ぶ
+        var k = n == 0 ? 0 : Random.Shared.Next(1, n + 1);
 
         DateTimeOffset start;
         if (k == n)
