@@ -42,6 +42,7 @@ public class EventsController : ControllerBase
                 s.ex_score_max   AS "ExScoreMax"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
+            WHERE e.start_date <= NOW()
             ORDER BY e.start_date DESC
             LIMIT @Limit
             """;
