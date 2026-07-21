@@ -1885,7 +1885,16 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .tier-radio label {
   flex-wrap: wrap;
   min-height: 44px;
-  padding: 4px 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(8, 8, 22, 0.45);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.tier-radio label:has(input[type="radio"]:checked) {
+  border-color: #00e5ff;
+  background: rgba(0, 229, 255, 0.1);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.2), inset 0 0 0 1px rgba(0, 229, 255, 0.35);
 }
 .tier-radio .tier-name {
   font-weight: bold;
