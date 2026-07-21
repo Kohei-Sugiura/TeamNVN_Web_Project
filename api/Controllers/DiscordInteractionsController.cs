@@ -44,7 +44,6 @@ public class DiscordInteractionsController : ControllerBase
     private readonly DiscordCommandClient _cmd;
     private readonly RankingScreenshot _shot;
     private readonly MatchingManagerService _matching;
-    private readonly MessageEditDebouncer _editDebouncer;
 
     public DiscordInteractionsController(
         WeepaAdminClient admin,
@@ -53,8 +52,7 @@ public class DiscordInteractionsController : ControllerBase
         Npgsql.NpgsqlDataSource dataSource,
         DiscordCommandClient cmd,
         RankingScreenshot shot,
-        MatchingManagerService matching,
-        MessageEditDebouncer editDebouncer)
+        MatchingManagerService matching)
     {
         _admin = admin;
         _config = config;
@@ -63,7 +61,6 @@ public class DiscordInteractionsController : ControllerBase
         _cmd = cmd;
         _shot = shot;
         _matching = matching;
-        _editDebouncer = editDebouncer;
     }
 
     [HttpPost("interactions")]
@@ -288,26 +285,6 @@ public class DiscordInteractionsController : ControllerBase
             return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
         }
 
-        if (name == "room-panel")
-        {
-            var channelId = root.TryGetProperty("channel_id", out var cidEl) &&
-                            ulong.TryParse(cidEl.GetString(), out var ch) ? ch : 0UL;
-            if (channelId == 0) return EphemeralMessage("チャンネル ID を取得できません");
-
-            var room = _matching.GetRoomByChannelId(channelId);
-            if (room is null)
-            {
-                return EphemeralMessage("❌ ここはマッチング部屋ではありません");
-            }
-
-            _ = Task.Run(() => HandleRoomPanelAsync(token, channelId, room.Number));
-            return Json(new
-            {
-                type = RESP_DEFERRED_CHANNEL_MESSAGE,
-                data = new { flags = FLAG_EPHEMERAL },
-            });
-        }
-
         if (name == "matching-manager")
         {
             // チャンネル ID / ギルド ID は interaction payload から取得
@@ -318,14 +295,6 @@ public class DiscordInteractionsController : ControllerBase
             if (channelId == 0 || guildId == 0)
             {
                 return EphemeralMessage("チャンネル / ギルド情報を取得できません");
-            }
-
-            // 待機部屋ロール ID が設定されていなければ早期エラー (仕様)
-            var roleId = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
-            if (string.IsNullOrWhiteSpace(roleId) || !ulong.TryParse(roleId, out _))
-            {
-                return EphemeralMessage(
-                    "MATCHING_WAITING_ROOM_ROLE_ID が .env に設定されていません。設定してから再実行してください。");
             }
 
             _ = Task.Run(() => HandleMatchingManagerCreateAsync(token, guildId, channelId));
@@ -1074,45 +1043,6 @@ public class DiscordInteractionsController : ControllerBase
     // オンマチ会 (matching-manager) handlers
     // ============================================
 
-    private async Task HandleRoomPanelAsync(string token, ulong channelId, int roomNumber)
-    {
-        try
-        {
-            var room = _matching.GetRoom(roomNumber);
-            if (room is null)
-            {
-                await _cmd.FollowUpTextAsync(token, "❌ 部屋情報を取得できませんでした", ephemeral: true);
-                return;
-            }
-
-            // 1. 既存アンカーを削除
-            if (room.AnchorMessageId != 0)
-            {
-                await _cmd.DeleteChannelMessageAsync(channelId, room.AnchorMessageId);
-            }
-
-            // 2. 新しいアンカーを投稿 (= 最新メッセージとして下に出る)
-            var payload = _matching.BuildRoomAnchorPayload(room);
-            var newMsgId = await _cmd.CreateChannelMessageAsync(channelId, payload);
-            if (newMsgId is null)
-            {
-                await _cmd.FollowUpTextAsync(token, "❌ パネルの再投稿に失敗しました", ephemeral: true);
-                return;
-            }
-
-            // 3. state を新 ID で更新 (pin はしない: チャットで流れた時の bump 用なので pin 通知は出さない)
-            await _matching.UpdateRoomAsync(roomNumber, r => r.AnchorMessageId = newMsgId.Value);
-
-            // 4. ephemeral の "考え中" を消す
-            await _cmd.DeleteOriginalInteractionResponseAsync(token);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "room-panel failed");
-            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
-        }
-    }
-
     private async Task HandleMatchingManagerCreateAsync(string token, ulong guildId, ulong channelId)
     {
         try
@@ -1147,82 +1077,14 @@ public class DiscordInteractionsController : ControllerBase
 
     private IActionResult HandleMatchingComponent(JsonElement root, string op, string[] parts)
     {
-        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
-        if (string.IsNullOrWhiteSpace(roleIdStr) || !ulong.TryParse(roleIdStr, out var roleId))
-        {
-            return EphemeralMessage("MATCHING_WAITING_ROOM_ROLE_ID が未設定です");
-        }
-
-        // 入退室操作以外 (create-room / room-leave / play-end など) は別の関数群へ
         if (op == "create-room") return HandleMatchingCreateRoomOpen(root);
-        if (op == "mode-select") return HandleMatchingCreateRoomSubmit(root);
-        if (op == "join-room" && parts.Length >= 3 && int.TryParse(parts[2], out var jrn))
-            return HandleMatchingJoinRoom(root, jrn);
-        // 退出 / プレー開始 / プレー終了 / モード変更 ボタン
-        if (op == "room-leave")    return HandleMatchingRoomLeave(root);
-        if (op == "play-start")    return HandleMatchingPlayStart(root);
-        if (op == "play-end")      return HandleMatchingPlayEnd(root);
-        if (op == "change-mode")   return HandleMatchingChangeModeOpen(root);
-        if (op == "split-room")    return HandleMatchingSplitRoom(root);
-        // 退出確認 ephemeral 内のボタン (プレー中の退出時のみ表示)
-        if (op == "confirm-leave") return HandleMatchingConfirmLeave(root);
-        if (op == "cancel")        return HandleMatchingCancel(root);
-
-        // 重要: root (JsonElement) は parent の using var doc が解放されると無効になる。
-        // Task.Run へ渡す前に必要な値を string / ulong で取り出しておく。
-        var token = root.GetProperty("token").GetString() ?? "";
-        var guildId = root.TryGetProperty("guild_id", out var gid) &&
-                      ulong.TryParse(gid.GetString(), out var g) ? g : 0UL;
-        if (guildId == 0) return EphemeralMessage("ギルド ID を取得できません");
-
-        var userId = 0UL;
-        if (root.TryGetProperty("member", out var member) &&
-            member.TryGetProperty("user", out var user) &&
-            user.TryGetProperty("id", out var uid) &&
-            ulong.TryParse(uid.GetString(), out var u))
+        if (parts.Length >= 3 && int.TryParse(parts[2], out var roomNumber))
         {
-            userId = u;
+            if (op == "join-room")    return HandleMatchingJoinRoom(root, roomNumber);
+            if (op == "leave-room")   return HandleMatchingLeaveRoom(root, roomNumber);
+            if (op == "change-mode")  return HandleMatchingChangeModeOpen(root, roomNumber);
+            if (op == "split-room")   return HandleMatchingSplitRoom(root, roomNumber);
         }
-        if (userId == 0) return EphemeralMessage("ユーザー ID を取得できません");
-
-        if (op == "join-wait" || op == "leave-wait")
-        {
-            var isJoin = op == "join-wait";
-
-            // 既に部屋に居るユーザーは待機部屋へ入れない (1 人 1 部屋制約の徹底)
-            if (isJoin)
-            {
-                var inRoom = _matching.FindRoomContaining(userId);
-                if (inRoom is not null)
-                {
-                    return EphemeralMessage(
-                        $"❌ 既に部屋 (オンマチ{MatchingManagerService.NumberToCircle(inRoom.Number)}) に入室中のため、待機部屋には入れません");
-                }
-            }
-
-            _ = Task.Run(async () =>
-            {
-                var roleOk = isJoin
-                    ? await _cmd.AddMemberRoleAsync(guildId, userId, roleId)
-                    : await _cmd.RemoveMemberRoleAsync(guildId, userId, roleId);
-                if (!roleOk)
-                {
-                    await _cmd.FollowUpTextAsync(
-                        token,
-                        $"❌ {(isJoin ? "入室" : "退出")}処理に失敗しました (Bot 権限 / ロール階層を確認してください)",
-                        ephemeral: true);
-                    return;
-                }
-                if (isJoin) await _matching.AddWaitingUserAsync(userId);
-                else        await _matching.RemoveWaitingUserAsync(userId);
-
-                // 管理メッセージ本体を debounce 経由で更新 (連続クリック対策)
-                _matching.RefreshDashboard();
-            });
-            // type=6: deferred update message。クリック loading は即消える + ephemeral message 出ない
-            return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
-        }
-
         return InvalidComponent("未知の matching op");
     }
 
@@ -1231,14 +1093,6 @@ public class DiscordInteractionsController : ControllerBase
     {
         var nextNum = _matching.NextRoomNumber();
         if (nextNum == -1) return EphemeralMessage("❌ 現在満室です (9 部屋まで)");
-        var userId = ExtractUserId(root);
-        if (userId != 0)
-        {
-            var existing = _matching.FindRoomContaining(userId);
-            if (existing is not null)
-                return EphemeralMessage(
-                    $"❌ 既に他の部屋 (オンマチ{MatchingManagerService.NumberToCircle(existing.Number)}) に入室中です");
-        }
 
         var options = MatchingModes.All
             .Select((m, idx) => new
@@ -1276,39 +1130,25 @@ public class DiscordInteractionsController : ControllerBase
         });
     }
 
-    // 旧: ephemeral string-select 経由でこのコンポーネントが押されるケース (互換用に残す)
-    private IActionResult HandleMatchingCreateRoomSubmit(JsonElement root)
-    {
-        var mode = "";
-        if (root.TryGetProperty("data", out var data) &&
-            data.TryGetProperty("values", out var values) &&
-            values.ValueKind == JsonValueKind.Array &&
-            values.GetArrayLength() > 0)
-        {
-            mode = values[0].GetString() ?? "";
-        }
-        return ProcessCreateRoomSubmission(root, mode, isModal: false);
-    }
-
     // モーダル submit → Label でラップされた StringSelect の値を取り出す
     private IActionResult HandleMatchingCreateModalSubmit(JsonElement root)
     {
         var mode = ExtractModalSelectValue(root, "mode");
-        return ProcessCreateRoomSubmission(root, mode, isModal: true);
+        return ProcessCreateRoomSubmission(root, mode);
     }
 
-    // モード変更モーダル submit
-    private IActionResult HandleMatchingChangeModeSubmit(JsonElement root)
+    // モード変更モーダル submit (custom_id に部屋番号入り。統合ボードから開くため)
+    private IActionResult HandleMatchingChangeModeSubmit(JsonElement root, int roomNumber)
     {
         var modeValue = ExtractModalSelectValue(root, "mode");
         var modeDisplay = MatchingModes.ToDisplay(modeValue);
         if (modeDisplay is null) return EphemeralMessage("❌ 不正なモード");
 
-        var channelId = ExtractChannelId(root);
-        var room = _matching.GetRoomByChannelId(channelId);
-        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
-        if (room.Status != RoomStatus.Recruiting)
-            return EphemeralMessage("❌ プレー中はモード変更できません");
+        var room = _matching.GetRoom(roomNumber);
+        if (room is null) return EphemeralMessage("❌ 対象の部屋が存在しません");
+        var userId = ExtractUserId(root);
+        if (!room.MemberUserIds.Contains(userId))
+            return EphemeralMessage("❌ この部屋に入室中の人のみ操作できます");
 
         var oldMode = room.Mode;
         if (oldMode == modeDisplay)
@@ -1322,17 +1162,16 @@ public class DiscordInteractionsController : ControllerBase
         }
 
         var token = root.GetProperty("token").GetString() ?? "";
-        var roomNumber = room.Number;
+        var roomChannelId = room.ChannelId;
         var roomRoleId = room.RoleId;
         _ = Task.Run(async () =>
         {
             try
             {
                 await _matching.UpdateRoomAsync(roomNumber, r => r.Mode = modeDisplay);
-                RefreshRoomAnchor(roomNumber);
                 _matching.RefreshDashboard();
                 // 部屋専用チャンネルに対象ロール mention でモード変更通知
-                await _cmd.CreateChannelMessageAsync(channelId, new
+                await _cmd.CreateChannelMessageAsync(roomChannelId, new
                 {
                     content = $"<@&{roomRoleId}> モードが {oldMode} → {modeDisplay} に変更されました。",
                     allowed_mentions = new { roles = new[] { roomRoleId.ToString() } },
@@ -1396,7 +1235,7 @@ public class DiscordInteractionsController : ControllerBase
         return true;
     }
 
-    private IActionResult ProcessCreateRoomSubmission(JsonElement root, string mode, bool isModal)
+    private IActionResult ProcessCreateRoomSubmission(JsonElement root, string mode)
     {
         var modeDisplay = MatchingModes.ToDisplay(mode);
         if (modeDisplay is null) return EphemeralMessage("❌ 不正なモード");
@@ -1407,23 +1246,14 @@ public class DiscordInteractionsController : ControllerBase
         if (guildId == 0 || userId == 0) return EphemeralMessage("guild/user 取得不可");
 
         // 再チェック (race condition 対策)
-        var nextNum = _matching.NextRoomNumber();
-        if (nextNum == -1) return EphemeralMessage("❌ 現在満室です");
-        var existing = _matching.FindRoomContaining(userId);
-        if (existing is not null)
-            return EphemeralMessage(
-                $"❌ 既に他の部屋 (オンマチ{MatchingManagerService.NumberToCircle(existing.Number)}) に入室中です");
+        if (_matching.NextRoomNumber() == -1) return EphemeralMessage("❌ 現在満室です");
 
-        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
-        if (!ulong.TryParse(roleIdStr, out var waitingRoleId))
-            return EphemeralMessage("MATCHING_WAITING_ROOM_ROLE_ID 未設定");
         var categoryIdStr = _config["MATCHING_ROOM_CATEGORY_ID"];
         if (!ulong.TryParse(categoryIdStr, out var categoryId))
             return EphemeralMessage("MATCHING_ROOM_CATEGORY_ID 未設定");
 
-        _ = Task.Run(() => DoCreateRoomAsync(token, guildId, userId, waitingRoleId, categoryId, nextNum, mode, modeDisplay));
+        _ = Task.Run(() => DoCreateRoomAsync(token, guildId, userId, categoryId, modeDisplay));
         // モーダルの場合は新しい応答メッセージは出ない → deferred channel message + ephemeral で初期化
-        // → DoCreateRoomAsync の EditOriginalInteractionResponseAsync が成功メッセージで上書き
         return Json(new
         {
             type = RESP_DEFERRED_CHANNEL_MESSAGE,
@@ -1432,11 +1262,26 @@ public class DiscordInteractionsController : ControllerBase
     }
 
     private async Task DoCreateRoomAsync(
-        string token, ulong guildId, ulong creatorUserId, ulong waitingRoleId,
-        ulong categoryId, int roomNumber, string modeValue, string modeDisplay)
+        string token, ulong guildId, ulong creatorUserId,
+        ulong categoryId, string modeDisplay)
     {
         try
         {
+            // 0. 既に他の部屋に入室中なら先に退出 (退出処理 → 入室処理)
+            var existing = _matching.FindRoomContaining(creatorUserId);
+            if (existing is not null)
+            {
+                await DoLeaveRoomAsync(token, guildId, creatorUserId, existing.Number);
+            }
+
+            // 番号は退出処理後に採番 (退出で部屋が空き削除された場合を拾う)
+            var roomNumber = _matching.NextRoomNumber();
+            if (roomNumber == -1)
+            {
+                await _cmd.FollowUpTextAsync(token, "❌ 現在満室です", ephemeral: true);
+                return;
+            }
+
             // 1. ロール作成
             var circle = MatchingManagerService.NumberToCircle(roomNumber);
             var roleName = $"オンマチ{circle}";
@@ -1477,42 +1322,26 @@ public class DiscordInteractionsController : ControllerBase
                 return;
             }
 
-            // 3. 作成者を入室処理 (待機部屋ロール剥奪 → 部屋ロール付与)
-            await _cmd.RemoveMemberRoleAsync(guildId, creatorUserId, waitingRoleId);
+            // 3. 作成者を入室処理 (部屋ロール付与)
             await _cmd.AddMemberRoleAsync(guildId, creatorUserId, roleId.Value);
-            await _matching.RemoveWaitingUserAsync(creatorUserId);
 
-            // 4. パスワード採番 + state 登録
-            var pw = _matching.PickPassword() ?? "000000";
+            // 4. state 登録 (パスワードは部屋番号 6 桁固定)
             var room = new MatchingRoom
             {
                 Number = roomNumber,
                 Mode = modeDisplay,
-                Password = pw,
+                Password = MatchingManagerService.RoomPassword(roomNumber),
                 ChannelId = channelId.Value,
                 RoleId = roleId.Value,
                 MemberUserIds = new List<ulong> { creatorUserId },
             };
             await _matching.AddRoomAsync(room);
 
-            // 5. 部屋チャンネルにアンカーメッセージ投稿 + ピン
-            var anchorPayload = _matching.BuildRoomAnchorPayload(room);
-            var anchorMsgId = await _cmd.CreateChannelMessageAsync(channelId.Value, anchorPayload);
-            if (anchorMsgId is not null)
-            {
-                await _matching.UpdateRoomAsync(roomNumber, r => r.AnchorMessageId = anchorMsgId.Value);
-                await _cmd.PinMessageAsync(channelId.Value, anchorMsgId.Value);
-            }
-
-            // 6. 管理メッセージを更新 (Phase 1 メッセージ)
+            // 5. 部屋チャンネルに入室通知 + 管理メッセージ更新
+            await PostRoomMemberNotificationAsync(room, new[] { creatorUserId }, "入室");
             _matching.RefreshDashboard();
 
-            // 7. 待機部屋チャンネルに通知 (ロール mention 付き)
-            await PostMatchingNotificationAsync(
-                waitingRoleId,
-                $"部屋: オンマチ{circle} {modeDisplay} が作成されました。");
-
-            // 8. ephemeral の "考え中" 表示を消す (成功時は通知メッセージで十分なので個別 ephemeral は不要)
+            // 6. ephemeral の "考え中" 表示を消す
             await _cmd.DeleteOriginalInteractionResponseAsync(token);
         }
         catch (Exception ex)
@@ -1533,17 +1362,16 @@ public class DiscordInteractionsController : ControllerBase
         if (userId == 0 || guildId == 0) return EphemeralMessage("user/guild 取得不可");
 
         var existing = _matching.FindRoomContaining(userId);
-        if (existing is not null)
-            return EphemeralMessage(
-                $"❌ 既に他の部屋 (オンマチ{MatchingManagerService.NumberToCircle(existing.Number)}) に入室中です");
-
-        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
-        ulong.TryParse(roleIdStr, out var waitingRoleId);
+        if (existing is not null && existing.Number == roomNumber)
+            return EphemeralMessage("❌ 既にこの部屋に入室中です");
 
         _ = Task.Run(async () =>
         {
-            await _cmd.RemoveMemberRoleAsync(guildId, userId, waitingRoleId);
-            await _matching.RemoveWaitingUserAsync(userId);
+            // 別の部屋に入室中なら退出処理 → 入室処理
+            if (existing is not null)
+            {
+                await DoLeaveRoomAsync(token, guildId, userId, existing.Number);
+            }
             var ok = await _cmd.AddMemberRoleAsync(guildId, userId, room.RoleId);
             if (!ok)
             {
@@ -1555,31 +1383,21 @@ public class DiscordInteractionsController : ControllerBase
                 if (!r.MemberUserIds.Contains(userId)) r.MemberUserIds.Add(userId);
             });
 
-            // 部屋アンカー + 管理メッセージ更新 (debounce 経由)
             var refreshed = _matching.GetRoom(roomNumber);
-            if (refreshed is not null && refreshed.AnchorMessageId != 0)
+            if (refreshed is not null)
             {
-                _editDebouncer.Schedule(
-                    refreshed.ChannelId, refreshed.AnchorMessageId,
-                    () =>
-                    {
-                        var latest = _matching.GetRoom(roomNumber);
-                        return latest is null
-                            ? new { } as object
-                            : _matching.BuildRoomAnchorPayload(latest);
-                    });
+                await PostRoomMemberNotificationAsync(refreshed, new[] { userId }, "入室");
             }
             _matching.RefreshDashboard();
         });
         return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
     }
 
-    // 退出ボタン: 募集中は即実行、プレー中は ephemeral で確認
-    private IActionResult HandleMatchingRoomLeave(JsonElement root)
+    // 統合ボードの退出ボタン
+    private IActionResult HandleMatchingLeaveRoom(JsonElement root, int roomNumber)
     {
-        var channelId = ExtractChannelId(root);
-        var room = _matching.GetRoomByChannelId(channelId);
-        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
+        var room = _matching.GetRoom(roomNumber);
+        if (room is null) return EphemeralMessage("❌ 対象の部屋が存在しません");
 
         var userId = ExtractUserId(root);
         var guildId = ExtractGuildId(root);
@@ -1588,149 +1406,18 @@ public class DiscordInteractionsController : ControllerBase
         if (!room.MemberUserIds.Contains(userId))
             return EphemeralMessage("❌ あなたはこの部屋の入室者ではありません");
 
-        if (room.Status == RoomStatus.Playing)
-        {
-            // プレー中は確認 ephemeral を出す
-            return Json(new
-            {
-                type = RESP_CHANNEL_MESSAGE,
-                data = new
-                {
-                    flags = FLAG_EPHEMERAL,
-                    content = $"オンマチ{MatchingManagerService.NumberToCircle(room.Number)} はプレー中です。本当に退出しますか?",
-                    components = new object[]
-                    {
-                        new
-                        {
-                            type = 1,
-                            components = new object[]
-                            {
-                                new { type = 2, style = 4, label = "退出する",   custom_id = "matching:confirm-leave" },
-                                new { type = 2, style = 2, label = "キャンセル", custom_id = "matching:cancel" },
-                            },
-                        },
-                    },
-                },
-            });
-        }
-
-        // 募集中はそのまま退出
-        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
-        ulong.TryParse(roleIdStr, out var waitingRoleId);
-        _ = Task.Run(() => DoLeaveRoomAsync(token, guildId, userId, waitingRoleId, room.Number, autoEnd: false));
+        _ = Task.Run(() => DoLeaveRoomAsync(token, guildId, userId, roomNumber));
         return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
     }
 
-    // 確認 ephemeral の "退出する" → 実際の退出処理
-    private IActionResult HandleMatchingConfirmLeave(JsonElement root)
+    // モード変更ボタン → Modal を返す (入室者のみ)
+    private IActionResult HandleMatchingChangeModeOpen(JsonElement root, int roomNumber)
     {
-        var channelId = ExtractChannelId(root);
-        var room = _matching.GetRoomByChannelId(channelId);
-        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
-
+        var room = _matching.GetRoom(roomNumber);
+        if (room is null) return EphemeralMessage("❌ 対象の部屋が存在しません");
         var userId = ExtractUserId(root);
-        var guildId = ExtractGuildId(root);
-        var token = root.GetProperty("token").GetString() ?? "";
-        if (userId == 0 || guildId == 0) return EphemeralMessage("user/guild 取得不可");
         if (!room.MemberUserIds.Contains(userId))
-            return EphemeralMessage("❌ 既に退出済みです");
-
-        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
-        ulong.TryParse(roleIdStr, out var waitingRoleId);
-
-        _ = Task.Run(async () =>
-        {
-            await DoLeaveRoomAsync(token, guildId, userId, waitingRoleId, room.Number, autoEnd: false);
-            await _cmd.DeleteOriginalInteractionResponseAsync(token);
-        });
-        return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
-    }
-
-    // キャンセル → 確認 ephemeral を「キャンセルしました」に上書き
-    private IActionResult HandleMatchingCancel(JsonElement root)
-    {
-        return Json(new
-        {
-            type = RESP_UPDATE_MESSAGE,
-            data = new
-            {
-                content = "キャンセルしました。",
-                components = Array.Empty<object>(),
-            },
-        });
-    }
-
-    // プレー開始ボタン → 募集中 → プレー中 に遷移 (即実行)
-    private IActionResult HandleMatchingPlayStart(JsonElement root)
-    {
-        var channelId = ExtractChannelId(root);
-        var room = _matching.GetRoomByChannelId(channelId);
-        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
-        if (room.Status != RoomStatus.Recruiting)
-            return EphemeralMessage("❌ 既にプレー中です");
-        var capacity = MatchingModes.CapacityOfDisplay(room.Mode);
-        if (room.MemberUserIds.Count > capacity)
-            return EphemeralMessage($"❌ 定員 ({capacity}) を超えているため開始できません");
-
-        var token = root.GetProperty("token").GetString() ?? "";
-        _ = Task.Run(async () =>
-        {
-            await _matching.UpdateRoomAsync(room.Number, r =>
-            {
-                r.Status = RoomStatus.Playing;
-                r.PlayStartUtc = DateTimeOffset.UtcNow;
-            });
-            RefreshRoomAnchor(room.Number);
-            // 状態遷移は debounce を介さず即時反映 (1 秒ラグで「反映されない」と見えるのを防ぐ)
-            await _matching.RefreshDashboardNowAsync();
-        });
-        return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
-    }
-
-    // プレー終了ボタン → プレー中 → 募集中 に遷移 (入室者は残る、即実行)
-    private IActionResult HandleMatchingPlayEnd(JsonElement root)
-    {
-        var channelId = ExtractChannelId(root);
-        var room = _matching.GetRoomByChannelId(channelId);
-        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
-        if (room.Status != RoomStatus.Playing)
-            return EphemeralMessage("❌ プレー中ではありません");
-
-        var token = root.GetProperty("token").GetString() ?? "";
-        var roomNumber = room.Number;
-        var roomMode = room.Mode;
-        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
-        ulong.TryParse(roleIdStr, out var waitingRoleId);
-
-        _ = Task.Run(async () =>
-        {
-            await _matching.UpdateRoomAsync(roomNumber, r =>
-            {
-                r.Status = RoomStatus.Recruiting;
-                r.PlayStartUtc = null;
-            });
-            RefreshRoomAnchor(roomNumber);
-            // 状態遷移は debounce を介さず即時反映 (1 秒ラグで「反映されない」と見えるのを防ぐ)
-            await _matching.RefreshDashboardNowAsync();
-            // 待機部屋チャンネルに「プレーが終了しました」通知 (status: Playing→Recruiting の遷移時のみ)
-            if (waitingRoleId != 0)
-            {
-                await PostMatchingNotificationAsync(
-                    waitingRoleId,
-                    $"部屋: オンマチ{MatchingManagerService.NumberToCircle(roomNumber)} {roomMode} のプレーが終了しました。");
-            }
-        });
-        return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
-    }
-
-    // モード変更ボタン → Modal を返す
-    private IActionResult HandleMatchingChangeModeOpen(JsonElement root)
-    {
-        var channelId = ExtractChannelId(root);
-        var room = _matching.GetRoomByChannelId(channelId);
-        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
-        if (room.Status != RoomStatus.Recruiting)
-            return EphemeralMessage("❌ プレー中はモード変更できません");
+            return EphemeralMessage("❌ この部屋に入室中の人のみ操作できます");
 
         var options = MatchingModes.All
             .Select(m => new
@@ -1747,7 +1434,7 @@ public class DiscordInteractionsController : ControllerBase
             data = new
             {
                 title = $"オンマチ{MatchingManagerService.NumberToCircle(room.Number)} モード変更",
-                custom_id = "matching:change-mode-modal",
+                custom_id = $"matching:change-mode-modal:{roomNumber}",
                 components = new object[]
                 {
                     new
@@ -1768,12 +1455,14 @@ public class DiscordInteractionsController : ControllerBase
         });
     }
 
-    // 部屋分割ボタン (Phase 4)
-    private IActionResult HandleMatchingSplitRoom(JsonElement root)
+    // 部屋分割ボタン (入室者のみ)
+    private IActionResult HandleMatchingSplitRoom(JsonElement root, int roomNumber)
     {
-        var channelId = ExtractChannelId(root);
-        var room = _matching.GetRoomByChannelId(channelId);
-        if (room is null) return EphemeralMessage("❌ この部屋は管理対象外です");
+        var room = _matching.GetRoom(roomNumber);
+        if (room is null) return EphemeralMessage("❌ 対象の部屋が存在しません");
+        var userId = ExtractUserId(root);
+        if (!room.MemberUserIds.Contains(userId))
+            return EphemeralMessage("❌ この部屋に入室中の人のみ操作できます");
         if (!_matching.CanSplitRoom(room))
             return EphemeralMessage("❌ 現在この部屋は分割できません");
 
@@ -1784,10 +1473,8 @@ public class DiscordInteractionsController : ControllerBase
         var categoryIdStr = _config["MATCHING_ROOM_CATEGORY_ID"];
         if (!ulong.TryParse(categoryIdStr, out var categoryId))
             return EphemeralMessage("MATCHING_ROOM_CATEGORY_ID 未設定");
-        var roleIdStr = _config["MATCHING_WAITING_ROOM_ROLE_ID"];
-        ulong.TryParse(roleIdStr, out var waitingRoleId);
 
-        _ = Task.Run(() => DoSplitRoomAsync(token, guildId, categoryId, waitingRoleId, room.Number));
+        _ = Task.Run(() => DoSplitRoomAsync(token, guildId, categoryId, roomNumber));
         return Json(new
         {
             type = RESP_DEFERRED_CHANNEL_MESSAGE,
@@ -1796,7 +1483,7 @@ public class DiscordInteractionsController : ControllerBase
     }
 
     private async Task DoSplitRoomAsync(
-        string token, ulong guildId, ulong categoryId, ulong waitingRoleId, int sourceRoomNumber)
+        string token, ulong guildId, ulong categoryId, int sourceRoomNumber)
     {
         var errors = new List<string>();
         try
@@ -1832,7 +1519,6 @@ public class DiscordInteractionsController : ControllerBase
             await _matching.RemoveRoomAsync(sourceRoomNumber);
 
             // 4. N 個の新部屋を作成
-            var createdRooms = new List<MatchingRoom>();
             const long basicAllow = 1024 + 2048 + 65536;
             var appId = _config["DISCORD_APP_ID"] ?? "";
             for (int i = 0; i < n; i++)
@@ -1870,18 +1556,16 @@ public class DiscordInteractionsController : ControllerBase
                     continue;
                 }
 
-                var pw = _matching.PickPassword() ?? "000000";
                 var newRoom = new MatchingRoom
                 {
                     Number = newNum,
                     Mode = sourceRoom.Mode,
-                    Password = pw,
+                    Password = MatchingManagerService.RoomPassword(newNum),
                     ChannelId = newChannelId.Value,
                     RoleId = newRoleId.Value,
                     MemberUserIds = groups[i],
                 };
                 await _matching.AddRoomAsync(newRoom);
-                createdRooms.Add(newRoom);
 
                 // メンバーに新ロール付与
                 foreach (var uid in groups[i])
@@ -1889,22 +1573,8 @@ public class DiscordInteractionsController : ControllerBase
                     await _cmd.AddMemberRoleAsync(guildId, uid, newRoleId.Value);
                 }
 
-                // アンカー投稿 + ピン
-                var anchorPayload = _matching.BuildRoomAnchorPayload(newRoom);
-                var anchorMsgId = await _cmd.CreateChannelMessageAsync(newChannelId.Value, anchorPayload);
-                if (anchorMsgId is not null)
-                {
-                    await _matching.UpdateRoomAsync(newNum, r => r.AnchorMessageId = anchorMsgId.Value);
-                    await _cmd.PinMessageAsync(newChannelId.Value, anchorMsgId.Value);
-                }
-
-                // 待機部屋通知
-                if (waitingRoleId != 0)
-                {
-                    await PostMatchingNotificationAsync(
-                        waitingRoleId,
-                        $"部屋: オンマチ{circle} {sourceRoom.Mode} が作成されました。");
-                }
+                // 新部屋チャンネルに入室通知
+                await PostRoomMemberNotificationAsync(newRoom, groups[i], "入室");
             }
 
             // 5. 元部屋のチャンネル/ロールを削除 (ロール削除で旧ロールも自動的に剥がれる)
@@ -1934,87 +1604,26 @@ public class DiscordInteractionsController : ControllerBase
         }
     }
 
-    // 部屋アンカーを debounce 経由で更新
-    private void RefreshRoomAnchor(int roomNumber)
-    {
-        var room = _matching.GetRoom(roomNumber);
-        if (room is null || room.AnchorMessageId == 0) return;
-        _editDebouncer.Schedule(room.ChannelId, room.AnchorMessageId, () =>
-        {
-            var latest = _matching.GetRoom(roomNumber);
-            return latest is null
-                ? new { } as object
-                : _matching.BuildRoomAnchorPayload(latest);
-        });
-    }
-
-    // Phase 3 のプレー開始ボタン用に残す (退出は確認不要に変わった)
-    private IActionResult BuildConfirmModal(string title, string labelText, string confirmLabel, string customId)
-    {
-        return Json(new
-        {
-            type = RESP_MODAL,
-            data = new
-            {
-                title,
-                custom_id = customId,
-                components = new object[]
-                {
-                    new
-                    {
-                        type = 18, // LABEL
-                        label = labelText,
-                        component = new
-                        {
-                            type = 3, // STRING_SELECT
-                            custom_id = "confirm",
-                            min_values = 1,
-                            max_values = 1,
-                            options = new object[]
-                            {
-                                new { label = confirmLabel,    value = "yes" },
-                                new { label = "キャンセル",   value = "no"  },
-                            },
-                        },
-                    },
-                },
-            },
-        });
-    }
-
     private async Task DoLeaveRoomAsync(
-        string token, ulong guildId, ulong userId, ulong waitingRoleId,
-        int roomNumber, bool autoEnd)
+        string token, ulong guildId, ulong userId, int roomNumber)
     {
         try
         {
             var room = _matching.GetRoom(roomNumber);
             if (room is null) return;
             await _cmd.RemoveMemberRoleAsync(guildId, userId, room.RoleId);
-            // 退出後は待機部屋に自動的には入れない (待機部屋に戻りたい人は手動で「入室」ボタンを押す)
             await _matching.UpdateRoomAsync(roomNumber, r => r.MemberUserIds.Remove(userId));
 
             var after = _matching.GetRoom(roomNumber);
             if (after is null) return;
             if (after.MemberUserIds.Count == 0)
             {
-                // 無人 → 自動削除
-                await DoEndRoomAsync(token, guildId, waitingRoleId, roomNumber, alreadyEmptied: true);
+                // 無人 → 自動削除 (チャンネルごと消えるので退出通知は出さない)
+                await DoEndRoomAsync(token, guildId, roomNumber, alreadyEmptied: true);
                 return;
             }
 
-            if (after.AnchorMessageId != 0)
-            {
-                _editDebouncer.Schedule(
-                    after.ChannelId, after.AnchorMessageId,
-                    () =>
-                    {
-                        var latest = _matching.GetRoom(roomNumber);
-                        return latest is null
-                            ? new { } as object
-                            : _matching.BuildRoomAnchorPayload(latest);
-                    });
-            }
+            await PostRoomMemberNotificationAsync(after, new[] { userId }, "退出");
             _matching.RefreshDashboard();
         }
         catch (Exception ex)
@@ -2025,7 +1634,7 @@ public class DiscordInteractionsController : ControllerBase
     }
 
     private async Task DoEndRoomAsync(
-        string token, ulong guildId, ulong waitingRoleId, int roomNumber,
+        string token, ulong guildId, int roomNumber,
         bool alreadyEmptied = false)
     {
         try
@@ -2033,8 +1642,7 @@ public class DiscordInteractionsController : ControllerBase
             var room = _matching.GetRoom(roomNumber);
             if (room is null) return;
 
-            // 残メンバー全員から部屋ロールを剥奪 (退出後は待機部屋に自動入室させない仕様)
-            // → ロール削除で自動的に剥がれるが、明示的に消しておく
+            // ロール削除で自動的に剥がれるが、明示的に消しておく
             if (!alreadyEmptied)
             {
                 foreach (var uid in room.MemberUserIds.ToList())
@@ -2050,27 +1658,31 @@ public class DiscordInteractionsController : ControllerBase
             // state から除去
             await _matching.RemoveRoomAsync(roomNumber);
 
-            // 管理メッセージ更新 (待機部屋への「プレー終了」通知は
-            // status: Playing→Recruiting の遷移時のみ送る仕様なのでここでは出さない)
             _matching.RefreshDashboard();
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "end room failed");
-            await _cmd.FollowUpTextAsync(token, $"❌ プレー終了処理エラー: {ex.Message}", ephemeral: true);
+            await _cmd.FollowUpTextAsync(token, $"❌ 部屋削除処理エラー: {ex.Message}", ephemeral: true);
         }
     }
 
-    private async Task PostMatchingNotificationAsync(ulong waitingRoleId, string text)
+    // 部屋チャンネルへ入退室通知 (部屋ロール + 対象者をメンション)
+    private async Task PostRoomMemberNotificationAsync(
+        MatchingRoom room, IEnumerable<ulong> userIds, string action)
     {
-        var notifyChannelStr = _config["MATCHING_WAITING_ROOM_CHANNEL_ID"];
-        if (!ulong.TryParse(notifyChannelStr, out var notifyChannelId)) return;
-        var payload = new
+        var users = userIds.ToList();
+        if (users.Count == 0) return;
+        var mentions = string.Join(" ", users.Select(u => $"<@{u}>"));
+        await _cmd.CreateChannelMessageAsync(room.ChannelId, new
         {
-            content = $"<@&{waitingRoleId}> {text}",
-            allowed_mentions = new { roles = new[] { waitingRoleId.ToString() } },
-        };
-        await _cmd.CreateChannelMessageAsync(notifyChannelId, payload);
+            content = $"<@&{room.RoleId}> {mentions} さんが{action}しました",
+            allowed_mentions = new
+            {
+                roles = new[] { room.RoleId.ToString() },
+                users = users.Select(u => u.ToString()).ToArray(),
+            },
+        });
     }
 
     private static ulong ExtractGuildId(JsonElement root) =>
@@ -2087,9 +1699,6 @@ public class DiscordInteractionsController : ControllerBase
             ulong.TryParse(i2.GetString(), out var v2)) return v2;
         return 0UL;
     }
-    private static ulong ExtractChannelId(JsonElement root) =>
-        root.TryGetProperty("channel_id", out var c) &&
-        ulong.TryParse(c.GetString(), out var u) ? u : 0UL;
 
     private async Task<IActionResult> HandleComponentAsync(
         JsonElement root, CancellationToken ct)
@@ -2406,9 +2015,10 @@ public class DiscordInteractionsController : ControllerBase
                 root, smResp, $"✅ 承認 (MAX = {newMax}、修正済み)", ExtractActorName(root), ct);
         }
 
-        if (parts.Length == 2 && parts[0] == "matching" && parts[1] == "change-mode-modal")
+        if (parts.Length == 3 && parts[0] == "matching" && parts[1] == "change-mode-modal"
+            && int.TryParse(parts[2], out var cmRoomNumber))
         {
-            return HandleMatchingChangeModeSubmit(root);
+            return HandleMatchingChangeModeSubmit(root, cmRoomNumber);
         }
 
 

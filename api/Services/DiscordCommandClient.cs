@@ -255,13 +255,6 @@ public sealed class DiscordCommandClient
                 // ADMINISTRATOR (0x8) のみ
                 default_member_permissions = "8",
             },
-            new
-            {
-                name = "room-panel",
-                description = "現在のマッチング部屋の管理パネルを最新メッセージとして再投稿",
-                type = 1,
-                // default_member_permissions を指定しない = 全員が使える
-            },
         };
 
         try
