@@ -297,7 +297,8 @@ public class DiscordInteractionsController : ControllerBase
                 return EphemeralMessage("チャンネル / ギルド情報を取得できません");
             }
 
-            _ = Task.Run(() => HandleMatchingManagerCreateAsync(token, guildId, channelId));
+            _ = Task.Run(() => _matching.RunSerializedAsync(
+                () => HandleMatchingManagerCreateAsync(token, guildId, channelId)));
             return Json(new
             {
                 type = RESP_DEFERRED_CHANNEL_MESSAGE,
@@ -1057,11 +1058,13 @@ public class DiscordInteractionsController : ControllerBase
                     ephemeral: true);
                 return;
             }
+            // 再投稿時に開設中の部屋を引き継ぐ (state を空 Rooms で上書きしない)
             await _matching.SetStateAsync(new MatchingManagerState
             {
                 GuildId = guildId,
                 ChannelId = channelId,
                 MessageId = msgId.Value,
+                Rooms = _matching.GetState()?.Rooms ?? new List<MatchingRoom>(),
             });
             await _cmd.FollowUpTextAsync(
                 token,
@@ -1162,19 +1165,35 @@ public class DiscordInteractionsController : ControllerBase
         }
 
         var token = root.GetProperty("token").GetString() ?? "";
-        var roomChannelId = room.ChannelId;
-        var roomRoleId = room.RoleId;
-        _ = Task.Run(async () =>
+        _ = Task.Run(() => _matching.RunSerializedAsync(async () =>
         {
             try
             {
+                // ロック内で再検証 (モーダルを開いたまま部屋が消える/自分が退出するケース)
+                var target = _matching.GetRoom(roomNumber);
+                if (target is null)
+                {
+                    await _cmd.FollowUpTextAsync(token, "❌ この部屋は終了しました", ephemeral: true);
+                    return;
+                }
+                if (!target.MemberUserIds.Contains(userId))
+                {
+                    await _cmd.FollowUpTextAsync(token, "❌ この部屋に入室中の人のみ操作できます", ephemeral: true);
+                    return;
+                }
+                var prevMode = target.Mode;
+                if (prevMode == modeDisplay)
+                {
+                    await _cmd.DeleteOriginalInteractionResponseAsync(token);
+                    return;
+                }
                 await _matching.UpdateRoomAsync(roomNumber, r => r.Mode = modeDisplay);
                 _matching.RefreshDashboard();
                 // 部屋専用チャンネルに対象ロール mention でモード変更通知
-                await _cmd.CreateChannelMessageAsync(roomChannelId, new
+                await _cmd.CreateChannelMessageAsync(target.ChannelId, new
                 {
-                    content = $"<@&{roomRoleId}> モードが {oldMode} → {modeDisplay} に変更されました。",
-                    allowed_mentions = new { roles = new[] { roomRoleId.ToString() } },
+                    content = $"<@&{target.RoleId}> モードが {prevMode} → {modeDisplay} に変更されました。",
+                    allowed_mentions = new { roles = new[] { target.RoleId.ToString() } },
                 });
                 // 確認 ephemeral を消す
                 await _cmd.DeleteOriginalInteractionResponseAsync(token);
@@ -1184,7 +1203,7 @@ public class DiscordInteractionsController : ControllerBase
                 _logger.LogWarning(ex, "change-mode failed");
                 await _cmd.FollowUpTextAsync(token, $"❌ モード変更エラー: {ex.Message}", ephemeral: true);
             }
-        });
+        }));
         return Json(new
         {
             type = RESP_DEFERRED_CHANNEL_MESSAGE,
@@ -1252,7 +1271,8 @@ public class DiscordInteractionsController : ControllerBase
         if (!ulong.TryParse(categoryIdStr, out var categoryId))
             return EphemeralMessage("MATCHING_ROOM_CATEGORY_ID 未設定");
 
-        _ = Task.Run(() => DoCreateRoomAsync(token, guildId, userId, categoryId, modeDisplay));
+        _ = Task.Run(() => _matching.RunSerializedAsync(
+            () => DoCreateRoomAsync(token, guildId, userId, categoryId, modeDisplay)));
         // モーダルの場合は新しい応答メッセージは出ない → deferred channel message + ephemeral で初期化
         return Json(new
         {
@@ -1353,6 +1373,7 @@ public class DiscordInteractionsController : ControllerBase
 
     private IActionResult HandleMatchingJoinRoom(JsonElement root, int roomNumber)
     {
+        // ここでのチェックは即時エラー表示のための UX 用。確定判断はロック内で再検証する
         var room = _matching.GetRoom(roomNumber);
         if (room is null) return EphemeralMessage("❌ 対象の部屋が存在しません");
 
@@ -1365,31 +1386,47 @@ public class DiscordInteractionsController : ControllerBase
         if (existing is not null && existing.Number == roomNumber)
             return EphemeralMessage("❌ 既にこの部屋に入室中です");
 
-        _ = Task.Run(async () =>
+        _ = Task.Run(() => _matching.RunSerializedAsync(async () =>
         {
-            // 別の部屋に入室中なら退出処理 → 入室処理
-            if (existing is not null)
+            try
             {
-                await DoLeaveRoomAsync(token, guildId, userId, existing.Number);
-            }
-            var ok = await _cmd.AddMemberRoleAsync(guildId, userId, room.RoleId);
-            if (!ok)
-            {
-                await _cmd.FollowUpTextAsync(token, "❌ 入室処理に失敗しました", ephemeral: true);
-                return;
-            }
-            await _matching.UpdateRoomAsync(roomNumber, r =>
-            {
-                if (!r.MemberUserIds.Contains(userId)) r.MemberUserIds.Add(userId);
-            });
+                var target = _matching.GetRoom(roomNumber);
+                if (target is null)
+                {
+                    await _cmd.FollowUpTextAsync(token, "❌ この部屋は終了しました", ephemeral: true);
+                    return;
+                }
+                var current = _matching.FindRoomContaining(userId);
+                if (current is not null && current.Number == roomNumber) return; // 連打
+                // 別の部屋に入室中なら退出処理 → 入室処理
+                if (current is not null)
+                {
+                    await DoLeaveRoomAsync(token, guildId, userId, current.Number);
+                }
+                var ok = await _cmd.AddMemberRoleAsync(guildId, userId, target.RoleId);
+                if (!ok)
+                {
+                    await _cmd.FollowUpTextAsync(token, "❌ 入室処理に失敗しました", ephemeral: true);
+                    return;
+                }
+                await _matching.UpdateRoomAsync(roomNumber, r =>
+                {
+                    if (!r.MemberUserIds.Contains(userId)) r.MemberUserIds.Add(userId);
+                });
 
-            var refreshed = _matching.GetRoom(roomNumber);
-            if (refreshed is not null)
-            {
-                await PostRoomMemberNotificationAsync(refreshed, new[] { userId }, "入室");
+                var refreshed = _matching.GetRoom(roomNumber);
+                if (refreshed is not null)
+                {
+                    await PostRoomMemberNotificationAsync(refreshed, new[] { userId }, "入室");
+                }
+                _matching.RefreshDashboard();
             }
-            _matching.RefreshDashboard();
-        });
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "join room failed");
+                await _cmd.FollowUpTextAsync(token, $"❌ 入室処理エラー: {ex.Message}", ephemeral: true);
+            }
+        }));
         return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
     }
 
@@ -1406,7 +1443,13 @@ public class DiscordInteractionsController : ControllerBase
         if (!room.MemberUserIds.Contains(userId))
             return EphemeralMessage("❌ あなたはこの部屋の入室者ではありません");
 
-        _ = Task.Run(() => DoLeaveRoomAsync(token, guildId, userId, roomNumber));
+        _ = Task.Run(() => _matching.RunSerializedAsync(async () =>
+        {
+            // 連打/別操作との競合対策: 今も本当にこの部屋に居るかを再検証
+            var current = _matching.FindRoomContaining(userId);
+            if (current is null || current.Number != roomNumber) return;
+            await DoLeaveRoomAsync(token, guildId, userId, roomNumber);
+        }));
         return Json(new { type = RESP_DEFERRED_UPDATE_MESSAGE });
     }
 
@@ -1474,7 +1517,8 @@ public class DiscordInteractionsController : ControllerBase
         if (!ulong.TryParse(categoryIdStr, out var categoryId))
             return EphemeralMessage("MATCHING_ROOM_CATEGORY_ID 未設定");
 
-        _ = Task.Run(() => DoSplitRoomAsync(token, guildId, categoryId, roomNumber));
+        _ = Task.Run(() => _matching.RunSerializedAsync(
+            () => DoSplitRoomAsync(token, guildId, categoryId, roomNumber)));
         return Json(new
         {
             type = RESP_DEFERRED_CHANNEL_MESSAGE,

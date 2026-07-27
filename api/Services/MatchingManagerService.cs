@@ -60,6 +60,9 @@ public sealed class MatchingManagerService
     private readonly ILogger<MatchingManagerService> _logger;
     private readonly MessageEditDebouncer _editDebouncer;
     private readonly SemaphoreSlim _fileLock = new(1, 1);
+    // 入退室/作成/分割/モード変更を直列化するロック。
+    // 複数ユーザーの同時操作による採番競合・二重入室・消えた部屋への操作を防ぐ
+    private readonly SemaphoreSlim _opLock = new(1, 1);
     private MatchingManagerState? _state;
 
     public MatchingManagerService(
@@ -107,6 +110,18 @@ public sealed class MatchingManagerService
         {
             _fileLock.Release();
         }
+    }
+
+    /// <summary>
+    /// マッチング操作を直列化して実行する。呼び出し側の背景タスクの最外殻で 1 回だけ使う
+    /// (非再入ロックのため、この中から再度呼ぶとデッドロックする)。
+    /// ボタン押下時の事前チェックは UX 用でしかないので、確定判断はこの中で再検証すること。
+    /// </summary>
+    public async Task RunSerializedAsync(Func<Task> op, CancellationToken ct = default)
+    {
+        await _opLock.WaitAsync(ct);
+        try { await op(); }
+        finally { _opLock.Release(); }
     }
 
     // ========================
