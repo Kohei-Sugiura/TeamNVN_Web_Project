@@ -239,52 +239,6 @@ public class DiscordInteractionsController : ControllerBase
             });
         }
 
-        if (name == "msc-result")
-        {
-            _ = Task.Run(() => HandleMscResultAsync(token, idArg));
-            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
-        }
-
-        if (name == "msc-publish")
-        {
-            _ = Task.Run(() => HandleMscPublishAsync(token, idArg));
-            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
-        }
-
-        if (name == "msc-unpublish")
-        {
-            if (!idArg.HasValue)
-            {
-                return Json(new
-                {
-                    type = RESP_CHANNEL_MESSAGE,
-                    data = new { content = "❌ id 引数が必要です", flags = FLAG_EPHEMERAL },
-                });
-            }
-            _ = Task.Run(() => HandleMscUnpublishAsync(token, idArg.Value));
-            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
-        }
-
-        if (name == "msc-eventdetail")
-        {
-            if (!idArg.HasValue)
-            {
-                return Json(new
-                {
-                    type = RESP_CHANNEL_MESSAGE,
-                    data = new { content = "❌ id 引数が必要です", flags = FLAG_EPHEMERAL },
-                });
-            }
-            _ = Task.Run(() => HandleMscEventDetailAsync(token, idArg.Value));
-            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
-        }
-
-        if (name == "msc-events-schedules")
-        {
-            _ = Task.Run(() => HandleMscEventsSchedulesAsync(token));
-            return Json(new { type = RESP_DEFERRED_CHANNEL_MESSAGE });
-        }
-
         if (name == "matching-manager")
         {
             // チャンネル ID / ギルド ID は interaction payload から取得
@@ -438,22 +392,33 @@ public class DiscordInteractionsController : ControllerBase
             }
             else
             {
-                // 直近開催 = start_date が NOW 以前で最新
+                // 集計期間が終了したイベントのうち、直近に終了したもの
                 var latest = await conn.QuerySingleOrDefaultAsync<int?>(
                     """
                     SELECT weepa_event_id FROM weepa_events
-                    WHERE start_date <= NOW()
-                    ORDER BY start_date DESC
+                    WHERE end_date < NOW()
+                    ORDER BY end_date DESC
                     LIMIT 1
                     """);
                 if (latest is null)
                 {
                     await _cmd.FollowUpTextAsync(
-                        token, "❌ まだ開催されたイベントがありません", ephemeral: true);
+                        token, "❌ 集計期間が終了したイベントがありません", ephemeral: true);
                     return;
                 }
                 targetId = latest.Value;
-                label = $"直近開催 (event #{targetId})";
+                label = $"直近終了 (event #{targetId})";
+            }
+
+            var pendingCount = await conn.ExecuteScalarAsync<int>(
+                "SELECT COUNT(*) FROM weepa_scores WHERE weepa_event_id = @Id AND approval_status = 0",
+                new { Id = targetId });
+            if (pendingCount > 0)
+            {
+                await _cmd.FollowUpTextAsync(
+                    token,
+                    $"⚠️ event #{targetId} に未処理 (承認/却下待ち) の投稿が {pendingCount} 件あります。ランキングに反映されていない可能性があります",
+                    ephemeral: true);
             }
 
             // 部門別に発表する。参加者がいる部門だけスクショを投稿
@@ -780,262 +745,6 @@ public class DiscordInteractionsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "weepa-events-schedules failed");
-            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
-        }
-    }
-
-    // ============================================
-    // MSC (MoonShotChallenge) handlers
-    // ============================================
-
-    private async Task HandleMscResultAsync(string token, int? eventId)
-    {
-        try
-        {
-            await using var conn = await _dataSource.OpenConnectionAsync();
-            int targetId;
-            string label;
-            if (eventId.HasValue)
-            {
-                var exists = await conn.ExecuteScalarAsync<int?>(
-                    "SELECT msc_event_id FROM msc_events WHERE msc_event_id = @Id",
-                    new { Id = eventId.Value });
-                if (exists is null)
-                {
-                    await _cmd.FollowUpTextAsync(
-                        token, $"❌ msc_event_id {eventId.Value} は存在しません", ephemeral: true);
-                    return;
-                }
-                targetId = eventId.Value;
-                label = $"event #{targetId}";
-            }
-            else
-            {
-                var latest = await conn.QuerySingleOrDefaultAsync<int?>(
-                    """
-                    SELECT msc_event_id FROM msc_events
-                    WHERE start_date <= NOW()
-                    ORDER BY start_date DESC
-                    LIMIT 1
-                    """);
-                if (latest is null)
-                {
-                    await _cmd.FollowUpTextAsync(
-                        token, "❌ まだ開催された MSC イベントがありません", ephemeral: true);
-                    return;
-                }
-                targetId = latest.Value;
-                label = $"直近開催 (event #{targetId})";
-            }
-
-            var png = await _shot.CaptureMscRankingAsync(targetId);
-            await _cmd.FollowUpWithImageAsync(
-                token, $"🌙 MSC 集計結果 ({label})", png, $"msc-result-{targetId}.png");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "msc-result handler failed");
-            await _cmd.FollowUpTextAsync(
-                token, $"❌ 画像生成中にエラーが発生しました: {ex.Message}", ephemeral: true);
-        }
-    }
-
-    private async Task HandleMscPublishAsync(string token, int? eventId)
-    {
-        try
-        {
-            await using var conn = await _dataSource.OpenConnectionAsync();
-            int targetId;
-            if (eventId.HasValue)
-            {
-                var exists = await conn.ExecuteScalarAsync<int?>(
-                    "SELECT msc_event_id FROM msc_events WHERE msc_event_id = @Id",
-                    new { Id = eventId.Value });
-                if (exists is null)
-                {
-                    await _cmd.FollowUpTextAsync(
-                        token, $"❌ msc_event_id {eventId.Value} は存在しません", ephemeral: true);
-                    return;
-                }
-                targetId = eventId.Value;
-            }
-            else
-            {
-                var latest = await conn.QuerySingleOrDefaultAsync<int?>(
-                    """
-                    SELECT msc_event_id FROM msc_events
-                    WHERE end_date < NOW() AND tallied_at IS NULL
-                    ORDER BY end_date DESC
-                    LIMIT 1
-                    """);
-                if (latest is null)
-                {
-                    await _cmd.FollowUpTextAsync(
-                        token, "❌ 公開対象の MSC イベント (終了済かつ未公開) がありません", ephemeral: true);
-                    return;
-                }
-                targetId = latest.Value;
-            }
-
-            using var resp = await _admin.PublishMscEventAsync(targetId, default);
-            if (resp.IsSuccessStatusCode)
-            {
-                await _cmd.FollowUpTextAsync(token, $"✅ MSC event #{targetId} を公開しました");
-            }
-            else
-            {
-                var body = await resp.Content.ReadAsStringAsync();
-                await _cmd.FollowUpTextAsync(
-                    token, $"❌ 公開失敗 ({(int)resp.StatusCode}): {body}", ephemeral: true);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "msc-publish handler failed");
-            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
-        }
-    }
-
-    private async Task HandleMscUnpublishAsync(string token, int eventId)
-    {
-        try
-        {
-            await using var conn = await _dataSource.OpenConnectionAsync();
-            var exists = await conn.ExecuteScalarAsync<int?>(
-                "SELECT msc_event_id FROM msc_events WHERE msc_event_id = @Id",
-                new { Id = eventId });
-            if (exists is null)
-            {
-                await _cmd.FollowUpTextAsync(
-                    token, $"❌ msc_event_id {eventId} は存在しません", ephemeral: true);
-                return;
-            }
-
-            using var resp = await _admin.UnpublishMscEventAsync(eventId, default);
-            if (resp.IsSuccessStatusCode)
-            {
-                await _cmd.FollowUpTextAsync(token, $"✅ MSC event #{eventId} を非公開に戻しました");
-            }
-            else
-            {
-                var body = await resp.Content.ReadAsStringAsync();
-                await _cmd.FollowUpTextAsync(
-                    token, $"❌ 非公開化失敗 ({(int)resp.StatusCode}): {body}", ephemeral: true);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "msc-unpublish handler failed");
-            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
-        }
-    }
-
-    private async Task HandleMscEventDetailAsync(string token, int eventId)
-    {
-        try
-        {
-            await using var conn = await _dataSource.OpenConnectionAsync();
-            var ev = await conn.QuerySingleOrDefaultAsync<dynamic>(
-                """
-                SELECT e.msc_event_id, e.title, e.description, e.start_date, e.end_date,
-                       e.tallied_at,
-                       (SELECT COUNT(*) FROM msc_submissions s
-                        WHERE s.msc_event_id = e.msc_event_id) AS subs_total,
-                       (SELECT COUNT(*) FROM msc_submissions s
-                        WHERE s.msc_event_id = e.msc_event_id AND s.approval_status = 1) AS subs_approved,
-                       (SELECT COUNT(*) FROM msc_submissions s
-                        WHERE s.msc_event_id = e.msc_event_id AND s.approval_status = 0) AS subs_pending
-                FROM msc_events e
-                WHERE e.msc_event_id = @Id
-                """,
-                new { Id = eventId });
-            if (ev is null)
-            {
-                await _cmd.FollowUpTextAsync(
-                    token, $"❌ msc_event_id {eventId} は存在しません", ephemeral: true);
-                return;
-            }
-            var songs = (await conn.QueryAsync<dynamic>(
-                """
-                SELECT song_order, song, effect
-                FROM msc_songs WHERE msc_event_id = @Id ORDER BY song_order
-                """,
-                new { Id = eventId })).ToList();
-
-            var nowUtc = DateTime.UtcNow;
-            var startUtc = ((DateTime)ev.start_date).ToUniversalTime();
-            var endUtc = ((DateTime)ev.end_date).ToUniversalTime();
-            var talliedAtNullable = (DateTime?)ev.tallied_at;
-            string state;
-            if (nowUtc < startUtc) state = "🕒 開催前";
-            else if (nowUtc < endUtc) state = "🟢 開催中";
-            else if (talliedAtNullable is null) state = "⏳ 集計中 (未公開)";
-            else state = "✅ 公開済";
-
-            var startJst = startUtc.AddHours(9).ToString("yyyy-MM-dd HH:mm");
-            var endJst = endUtc.AddHours(9).ToString("yyyy-MM-dd HH:mm");
-            var talliedJst = talliedAtNullable.HasValue
-                ? talliedAtNullable.Value.ToUniversalTime().AddHours(9).ToString("yyyy-MM-dd HH:mm") + " JST"
-                : "(未公開)";
-
-            var songsLine = string.Join("\n",
-                songs.Select(s => $"  {s.song_order}. {s.song} (`{s.effect}`)"));
-            if (string.IsNullOrEmpty(songsLine)) songsLine = "  (曲未設定)";
-
-            var description = string.IsNullOrWhiteSpace((string?)ev.description)
-                ? "(なし)" : (string)ev.description;
-
-            var msg = $"""
-                🌙 **MSC イベント #{eventId}** {ev.title}
-                開催期間: {startJst} ~ {endJst} JST
-                状態: {state}
-                集計: {talliedJst}
-                説明: {description}
-                課題曲:
-                {songsLine}
-                投稿: {ev.subs_approved} 承認済 / {ev.subs_pending} 未承認 / 計 {ev.subs_total} 件
-                """;
-            await _cmd.FollowUpTextAsync(token, msg);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "msc-eventdetail handler failed");
-            await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
-        }
-    }
-
-    private async Task HandleMscEventsSchedulesAsync(string token)
-    {
-        try
-        {
-            await using var conn = await _dataSource.OpenConnectionAsync();
-            var rows = (await conn.QueryAsync<dynamic>(
-                """
-                SELECT msc_event_id, title, start_date, end_date, tallied_at
-                FROM msc_events
-                WHERE start_date > NOW()
-                ORDER BY start_date ASC
-                LIMIT 20
-                """)).ToList();
-            if (rows.Count == 0)
-            {
-                await _cmd.FollowUpTextAsync(token, "🌙 開催予定の MSC イベントはありません");
-                return;
-            }
-            var sb = new StringBuilder();
-            sb.AppendLine("🌙 **MSC 開催予定 (上位 20 件)**");
-            for (int i = 0; i < rows.Count; i++)
-            {
-                var r = rows[i];
-                var s = ((DateTime)r.start_date).ToUniversalTime().AddHours(9).ToString("MM/dd HH:mm");
-                var e2 = ((DateTime)r.end_date).ToUniversalTime().AddHours(9).ToString("MM/dd HH:mm");
-                sb.AppendLine($"{i + 1}. `{s}~{e2}` #{r.msc_event_id} {r.title}");
-            }
-            await _cmd.FollowUpTextAsync(token, sb.ToString());
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "msc-events-schedules failed");
             await _cmd.FollowUpTextAsync(token, $"❌ エラー: {ex.Message}", ephemeral: true);
         }
     }

@@ -59,6 +59,8 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 | `approval_status` の値設計 | **負値=終端（却下）／非負=前進パイプライン** | `-1=却下 / 0=未承認 / 1=承認済み`。「非却下」は `approval_status >= 0` で綺麗に書ける。songs/scores 両テーブル共通 |
 | WeePA 参加部門 (Tier) | **1=ストイック(EX降順) / 2=チャレンジ(スコア降順・提出日昇順) / 3=カジュアル(順位なし提出順+自己べ更新幅)** | 参加層拡大施策 (2026-06-12)。所属部門は最後の投稿の tier、スコア集計は部門横断で score/ex_score それぞれ MAX。既存スコアは tier=1。フォームはURL共通でラジオ選択 |
 | 楽曲の「実施済み」判定 | **events に紐付いているかで判定（専用ステータスは持たない）** | `weepa_events.weepa_song_id` の有無で実施済みかどうかを派生。auto-weekly や手動 CreateEvent は `status=1 AND NOT EXISTS event` を選出/検証する |
+| MSC の Discord スラッシュコマンド | **全廃止 (2026-09-02)** | `/msc-result` 等5個を削除。スコア承認ボタン (`mscscore:*`) と通知は継続 |
+| `/weepa-result` の id 省略時 | **`end_date < NOW()` の直近終了イベント** | 開催中は対象外。未処理 (`approval_status=0`) 投稿があれば件数付き警告を ephemeral 表示 (2026-09-02) |
 
 ## UI/UX ルール
 
