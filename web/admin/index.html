@@ -89,6 +89,9 @@
                     <label>開催期間 (時間)
                         <input type="number" id="cfg-duration" name="durationHours" min="1">
                     </label>
+                    <label>終了→自動公開までの時間
+                        <input type="number" id="cfg-publish-delay" name="publishDelayHours" min="1">
+                    </label>
                 </div>
                 <div class="form-actions">
                     <button type="submit">保存 (Queue 再計算)</button>
@@ -99,7 +102,7 @@
 
         <section class="event-card admin-tab-panel" data-tab="publish" hidden>
             <h2>結果公開の切り替え</h2>
-            <p class="hint">end_date を過ぎたイベントの結果を、ランキング詳細ページから閲覧可能にする/非公開に戻す操作を行います。</p>
+            <p class="hint">end_date を過ぎたイベントの結果を、ランキング詳細ページから閲覧可能にする/非公開に戻す操作を行います。未公開イベントは「自動公開予定」の時刻になると自動で公開されます（未処理スコアが残っている場合は保留）。空欄で保存すると自動公開しません。</p>
             <div id="publish-list">
                 <p class="loading">読み込み中...</p>
             </div>

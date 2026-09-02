@@ -550,7 +550,8 @@ public class AdminController : ControllerBase
                 s.submit_name    AS "submitName",
                 e.start_date     AS "startDate",
                 e.end_date       AS "endDate",
-                e.tallied_at     AS "talliedAt"
+                e.tallied_at     AS "talliedAt",
+                e.auto_publish_at AS "autoPublishAt"
             FROM weepa_events e
             JOIN weepa_songs s ON s.weepa_song_id = e.weepa_song_id
             WHERE e.end_date < NOW()
@@ -587,6 +588,7 @@ public class AdminController : ControllerBase
                 hour = settings.Hour,
                 minute = settings.Minute,
                 durationHours = settings.DurationHours,
+                publishDelayHours = settings.PublishDelayHours,
             },
             current,
             queue,
@@ -721,11 +723,12 @@ public class AdminController : ControllerBase
             || request.DayOfWeek is < 0 or > 6
             || request.Hour is < 0 or > 23
             || request.Minute is < 0 or > 59
-            || request.DurationHours <= 0)
+            || request.DurationHours <= 0
+            || request.PublishDelayHours <= 0)
         {
             return BadRequest(new
             {
-                message = "値が範囲外です。dayOfWeek=0..6, hour=0..23, minute=0..59, durationHours>=1",
+                message = "値が範囲外です。dayOfWeek=0..6, hour=0..23, minute=0..59, durationHours>=1, publishDelayHours>=1",
             });
         }
 
@@ -739,7 +742,8 @@ public class AdminController : ControllerBase
             SET day_of_week    = @DayOfWeek,
                 hour           = @Hour,
                 minute         = @Minute,
-                duration_hours = @DurationHours
+                duration_hours = @DurationHours,
+                publish_delay_hours = @PublishDelayHours
             WHERE id = 1
             """,
             new
@@ -748,6 +752,7 @@ public class AdminController : ControllerBase
                 request.Hour,
                 request.Minute,
                 request.DurationHours,
+                request.PublishDelayHours,
             },
             transaction: tx,
             cancellationToken: ct));
@@ -842,9 +847,33 @@ public class AdminController : ControllerBase
         if (authFailure is not null) return authFailure;
 
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        // auto_publish_at を残すと tick が即座に再公開してしまうため一緒にクリアする
         var affected = await conn.ExecuteAsync(new CommandDefinition(
-            "UPDATE weepa_events SET tallied_at = NULL WHERE weepa_event_id = @Id",
+            "UPDATE weepa_events SET tallied_at = NULL, auto_publish_at = NULL WHERE weepa_event_id = @Id",
             new { Id = id },
+            cancellationToken: ct));
+
+        if (affected == 0)
+        {
+            return NotFound(new { message = "対象イベントが見つかりません" });
+        }
+
+        return Ok(new { message = "ok" });
+    }
+
+    [HttpPut("events/{id:int}/auto-publish-at")]
+    public async Task<IActionResult> SetAutoPublishAt(
+        int id,
+        [FromBody] AutoPublishAtRequest request,
+        CancellationToken ct)
+    {
+        var authFailure = Authenticate();
+        if (authFailure is not null) return authFailure;
+
+        await using var conn = await _dataSource.OpenConnectionAsync(ct);
+        var affected = await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE weepa_events SET auto_publish_at = @At WHERE weepa_event_id = @Id",
+            new { Id = id, At = request?.AutoPublishAt?.ToUniversalTime() },
             cancellationToken: ct));
 
         if (affected == 0)
@@ -860,14 +889,15 @@ public class AdminController : ControllerBase
         CancellationToken ct,
         Npgsql.NpgsqlTransaction? tx = null)
     {
-        var row = await conn.QuerySingleOrDefaultAsync<(short DayOfWeek, short Hour, short Minute, int DurationHours, string Timezone)?>(
+        var row = await conn.QuerySingleOrDefaultAsync<(short DayOfWeek, short Hour, short Minute, int DurationHours, string Timezone, int PublishDelayHours)?>(
             new CommandDefinition(
                 """
                 SELECT day_of_week AS DayOfWeek,
                        hour        AS Hour,
                        minute      AS Minute,
                        duration_hours AS DurationHours,
-                       timezone    AS Timezone
+                       timezone    AS Timezone,
+                       publish_delay_hours AS PublishDelayHours
                 FROM weepa_schedule_config
                 WHERE id = 1
                 """,
@@ -896,7 +926,8 @@ public class AdminController : ControllerBase
             (DayOfWeek)row.Value.DayOfWeek,
             row.Value.Hour,
             row.Value.Minute,
-            row.Value.DurationHours);
+            row.Value.DurationHours,
+            row.Value.PublishDelayHours);
         return (settings, null);
     }
 
@@ -917,7 +948,7 @@ public class AdminController : ControllerBase
             return false;
         }
 
-        settings = new AutoWeeklySettings(timezone, DayOfWeek.Wednesday, 21, 0, 168);
+        settings = new AutoWeeklySettings(timezone, DayOfWeek.Wednesday, 21, 0, 168, 24);
         error = null;
         return true;
     }
@@ -1052,5 +1083,6 @@ public class AdminController : ControllerBase
         DayOfWeek DayOfWeek,
         int Hour,
         int Minute,
-        int DurationHours);
+        int DurationHours,
+        int PublishDelayHours);
 }

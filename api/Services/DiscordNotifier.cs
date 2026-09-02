@@ -55,6 +55,8 @@ public interface IDiscordNotifier
     Task NotifyScoreSubmittedAsync(ScoreSubmittedNotification n, CancellationToken ct = default);
     Task NotifyMscScoreSubmittedAsync(MscScoreSubmittedNotification n, CancellationToken ct = default);
     Task NotifySongExMaxEstimateAsync(SongExMaxEstimateNotification n, CancellationToken ct = default);
+    Task PostTextAsync(string content, CancellationToken ct = default);
+    Task PostImageAsync(string content, byte[] png, string fileName, CancellationToken ct = default);
 }
 
 internal sealed class DiscordNotifier : IDiscordNotifier
@@ -377,6 +379,44 @@ internal sealed class DiscordNotifier : IDiscordNotifier
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Discord song ex-max notify failed");
+        }
+    }
+
+    public async Task PostTextAsync(string content, CancellationToken ct = default)
+    {
+        if (!_enabled) return;
+        try
+        {
+            using var resp = await _http.PostAsJsonAsync(
+                $"channels/{_channelId}/messages", new { content }, ct);
+            await LogIfFailureAsync(resp, "text post", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Discord text post failed");
+        }
+    }
+
+    public async Task PostImageAsync(
+        string content, byte[] png, string fileName, CancellationToken ct = default)
+    {
+        if (!_enabled) return;
+        try
+        {
+            using var multipart = new MultipartFormDataContent();
+            var json = JsonSerializer.Serialize(new { content });
+            multipart.Add(new StringContent(json, Encoding.UTF8, "application/json"), "payload_json");
+            var imageContent = new ByteArrayContent(png);
+            imageContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+            multipart.Add(imageContent, "files[0]", fileName);
+
+            using var resp = await _http.PostAsync(
+                $"channels/{_channelId}/messages", multipart, ct);
+            await LogIfFailureAsync(resp, "image post", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Discord image post failed");
         }
     }
 

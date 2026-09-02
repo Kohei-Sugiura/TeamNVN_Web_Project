@@ -224,6 +224,7 @@ const cfgDayEl = document.getElementById('cfg-day-of-week');
 const cfgHourEl = document.getElementById('cfg-hour');
 const cfgMinuteEl = document.getElementById('cfg-minute');
 const cfgDurationEl = document.getElementById('cfg-duration');
+const cfgPublishDelayEl = document.getElementById('cfg-publish-delay');
 const reorderSaveBtn = document.getElementById('reorder-save-btn');
 const shuffleBtn = document.getElementById('shuffle-btn');
 
@@ -378,6 +379,14 @@ function renderPublishList(past) {
         const stateLabel = published
             ? `<span class="status-active">公開中</span>`
             : `<span class="status-tallying">非公開</span>`;
+        const autoPublishCell = published
+            ? '—'
+            : `
+              <input type="datetime-local" class="auto-publish-input"
+                     data-event-id="${p.weepaEventId}"
+                     value="${toDatetimeLocal(p.autoPublishAt)}">
+              <button type="button" class="auto-publish-save" data-event-id="${p.weepaEventId}">保存</button>
+            `;
         return `
           <tr>
             <td>${escapeHtml(p.song)}</td>
@@ -385,6 +394,7 @@ function renderPublishList(past) {
             <td>${escapeHtml(p.submitName)}</td>
             <td>${escapeHtml(ymd(p.startDate))}~${escapeHtml(ymd(p.endDate))}</td>
             <td><a href="/admin/preview/?eventId=${encodeURIComponent(p.weepaEventId)}">プレビュー</a></td>
+            <td class="auto-publish-cell">${autoPublishCell}</td>
             <td class="status-cell">
               <button type="button" class="toggle-switch publish-toggle"
                       data-event-id="${p.weepaEventId}"
@@ -402,12 +412,19 @@ function renderPublishList(past) {
       <div class="db-table-wrap">
         <table class="ranking-table">
           <thead>
-            <tr><th>楽曲</th><th>譜面</th><th>選曲者</th><th>開催期間</th><th>確認</th><th class="status-cell">公開</th></tr>
+            <tr><th>楽曲</th><th>譜面</th><th>選曲者</th><th>開催期間</th><th>確認</th><th>自動公開予定</th><th class="status-cell">公開</th></tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
     `;
+}
+
+function toDatetimeLocal(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function fillScheduleConfigForm(cfg) {
@@ -420,6 +437,7 @@ function fillScheduleConfigForm(cfg) {
     cfgHourEl.value = String(cfg.hour);
     cfgMinuteEl.value = String(cfg.minute);
     cfgDurationEl.value = String(cfg.durationHours);
+    cfgPublishDelayEl.value = String(cfg.publishDelayHours);
     scheduleConfigTzEl.textContent = `タイムゾーン: ${cfg.timezone}（変更は .env で対応）`;
 }
 
@@ -449,6 +467,7 @@ scheduleConfigForm.addEventListener('submit', async (ev) => {
         hour: Number(cfgHourEl.value),
         minute: Number(cfgMinuteEl.value),
         durationHours: Number(cfgDurationEl.value),
+        publishDelayHours: Number(cfgPublishDelayEl.value),
     };
     if (!(await adminConfirm('スケジューリング設定を保存します。未来イベントの start/end が再計算されますが、よろしいですか？'))) return;
     try {
@@ -500,6 +519,31 @@ shuffleBtn.addEventListener('click', async () => {
 });
 
 publishListEl.addEventListener('click', async (ev) => {
+    const saveBtn = ev.target.closest('.auto-publish-save');
+    if (saveBtn) {
+        const id = saveBtn.dataset.eventId;
+        const input = publishListEl.querySelector(`.auto-publish-input[data-event-id="${id}"]`);
+        if (!input) return;
+        const autoPublishAt = input.value ? new Date(input.value).toISOString() : null;
+        const desc = autoPublishAt ? ymdHm(autoPublishAt) : '自動公開なし';
+        if (!(await adminConfirm(`event_id=${id} の自動公開予定を「${desc}」にします。よろしいですか？`))) return;
+        saveBtn.disabled = true;
+        try {
+            await adminFetch(`/api/admin/events/${id}/auto-publish-at`, {
+                method: 'PUT',
+                body: JSON.stringify({ autoPublishAt }),
+            });
+            setInfo(`event_id=${id} の自動公開予定を保存しました (${desc})。`, 'ok');
+            await loadSchedule();
+        } catch (err) {
+            if (err.message === 'AUTH_REDIRECT') return;
+            setInfo(err.message, 'ng');
+        } finally {
+            saveBtn.disabled = false;
+        }
+        return;
+    }
+
     const btn = ev.target.closest('.publish-toggle');
     if (!btn) return;
     const id = btn.dataset.eventId;

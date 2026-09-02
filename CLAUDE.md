@@ -61,6 +61,8 @@ Project-level guidance for Claude Code. `claude` を本リポジトリ直下で�
 | 楽曲の「実施済み」判定 | **events に紐付いているかで判定（専用ステータスは持たない）** | `weepa_events.weepa_song_id` の有無で実施済みかどうかを派生。auto-weekly や手動 CreateEvent は `status=1 AND NOT EXISTS event` を選出/検証する |
 | MSC の Discord スラッシュコマンド | **全廃止 (2026-09-02)** | `/msc-result` 等5個を削除。スコア承認ボタン (`mscscore:*`) と通知は継続 |
 | `/weepa-result` の id 省略時 | **`end_date < NOW()` の直近終了イベント** | 開催中は対象外。未処理 (`approval_status=0`) 投稿があれば件数付き警告を ephemeral 表示 (2026-09-02) |
+| イベント終了時の結果発表 | **tick が自動で承認チャンネルへ投稿** | `WeepaScheduleTickService` (毎分) が `end_date` 経過を検知し Tier別画像+未処理警告を投稿、`result_announced_at` で重複防止 (2026-09-02) |
+| ランキング自動公開 | **終了 + `publish_delay_hours` (デフォルト24h) で自動 publish** | 終了時に `auto_publish_at` を確定 (NULL=自動公開なし)。未処理投稿があれば保留し処理後に自動公開。手動 unpublish 時は `auto_publish_at` もクリアして再公開を防ぐ。管理画面の公開設定/スケジュール設定から変更可 (2026-09-02) |
 
 ## UI/UX ルール
 

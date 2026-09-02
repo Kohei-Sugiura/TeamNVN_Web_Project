@@ -24,6 +24,7 @@ builder.Services.AddSingleton<RankingScreenshot>();
 builder.Services.AddSingleton<ClaudeImageRecognitionService>();
 builder.Services.AddSingleton<MessageEditDebouncer>();
 builder.Services.AddSingleton<MatchingManagerService>();
+builder.Services.AddHostedService<WeepaScheduleTickService>();
 
 // 画像認識 API のレート制限: WeePA / MSC で別バケット (IP × エンドポイント種別)、
 // 各 1 分 3 リクエスト。nginx 経由のため X-Forwarded-For 末尾を見る。

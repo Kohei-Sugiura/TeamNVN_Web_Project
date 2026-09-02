@@ -42,7 +42,8 @@ CREATE TABLE weepa_schedule_config (
     hour            SMALLINT NOT NULL CHECK (hour BETWEEN 0 AND 23),
     minute          SMALLINT NOT NULL CHECK (minute BETWEEN 0 AND 59),
     duration_hours  INTEGER  NOT NULL CHECK (duration_hours > 0),
-    timezone        TEXT     NOT NULL DEFAULT 'Asia/Tokyo'
+    timezone        TEXT     NOT NULL DEFAULT 'Asia/Tokyo',
+    publish_delay_hours INTEGER NOT NULL DEFAULT 24 CHECK (publish_delay_hours > 0)
 );
 
 INSERT INTO weepa_schedule_config (day_of_week, hour, minute, duration_hours, timezone)
@@ -60,6 +61,10 @@ CREATE TABLE weepa_events (
     start_date      TIMESTAMPTZ NOT NULL,
     end_date        TIMESTAMPTZ NOT NULL,
     tallied_at      TIMESTAMPTZ,
+    -- 終了時の Discord 結果発表の実施済みマーク（バックグラウンドの tick が管理）
+    result_announced_at TIMESTAMPTZ,
+    -- 自動公開の予定時刻。終了時に end_date + publish_delay_hours で確定。NULL=自動公開しない
+    auto_publish_at TIMESTAMPTZ,
 
     CONSTRAINT valid_date_range CHECK (end_date > start_date)
 );
