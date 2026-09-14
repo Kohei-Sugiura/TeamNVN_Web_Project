@@ -1026,10 +1026,11 @@ public class DiscordInteractionsController : ControllerBase
             // のみ Bot が確実に持っているはずなので、ここに絞る。
             // ※ Discord は「自分が持っていない権限を allow に入れる」と 403 を返すため。
             const long basicAllow = 1024 + 2048 + 65536; // = 68608
+            const long viewerAllow = 1024 + 65536; // 非入室者: 閲覧・履歴OK / 送信NG
             var appId = _config["DISCORD_APP_ID"] ?? "";
             var overwrites = new List<object>
             {
-                new { id = guildId.ToString(),      type = 0, deny  = "1024",                 allow = "0" },
+                new { id = guildId.ToString(),      type = 0, deny  = "2048",                 allow = viewerAllow.ToString() },
                 new { id = roleId.Value.ToString(), type = 0, allow = basicAllow.ToString(),  deny  = "0" },
             };
             if (!string.IsNullOrEmpty(appId))
@@ -1273,6 +1274,7 @@ public class DiscordInteractionsController : ControllerBase
 
             // 4. N 個の新部屋を作成
             const long basicAllow = 1024 + 2048 + 65536;
+            const long viewerAllow = 1024 + 65536;
             var appId = _config["DISCORD_APP_ID"] ?? "";
             for (int i = 0; i < n; i++)
             {
@@ -1289,7 +1291,7 @@ public class DiscordInteractionsController : ControllerBase
 
                 var overwrites = new List<object>
                 {
-                    new { id = guildId.ToString(),        type = 0, deny  = "1024",                 allow = "0" },
+                    new { id = guildId.ToString(),        type = 0, deny  = "2048",                 allow = viewerAllow.ToString() },
                     new { id = newRoleId.Value.ToString(), type = 0, allow = basicAllow.ToString(), deny  = "0" },
                 };
                 if (!string.IsNullOrEmpty(appId))
