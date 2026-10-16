@@ -450,7 +450,8 @@ public class MscController : ControllerBase
                 ModelState.AddModelError("Image", $"image (play_order={order}) が 20MB を超えています");
                 return ValidationProblem(ModelState);
             }
-            if (!AllowedContentTypes.TryGetValue(file.ContentType, out var ext))
+            if (!AllowedContentTypes.TryGetValue(file.ContentType, out var ext)
+                || !ImageSignature.IsAllowedImage(file))
             {
                 ModelState.AddModelError("Image", $"image (play_order={order}) は JPEG/PNG/WebP のみ");
                 return ValidationProblem(ModelState);

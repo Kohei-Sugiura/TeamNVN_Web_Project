@@ -28,7 +28,6 @@ public class SongsController : ControllerBase
                 s.weepa_song_id   AS "weepaSongId",
                 s.song            AS "song",
                 s.effect          AS "effect",
-                s.x_id            AS "xId",
                 s.submit_name     AS "submitName",
                 s.submit_date     AS "submitDate",
                 s.approval_status AS "approvalStatus",

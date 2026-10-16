@@ -33,7 +33,7 @@ static string GetClientIp(HttpContext ctx)
     return ctx.Request.Headers["X-Forwarded-For"].ToString()
         .Split(',')
         .Select(s => s.Trim())
-        .FirstOrDefault(s => !string.IsNullOrEmpty(s))
+        .LastOrDefault(s => !string.IsNullOrEmpty(s))
         ?? ctx.Connection.RemoteIpAddress?.ToString()
         ?? "unknown";
 }
@@ -41,19 +41,15 @@ static string GetClientIp(HttpContext ctx)
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    foreach (var policy in new[] { "recognize-weepa", "recognize-msc" })
-    {
-        var key = policy;
-        options.AddPolicy(key, ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                $"{key}:{GetClientIp(ctx)}",
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 3,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0,
-                }));
-    }
+    options.AddPolicy("recognize-weepa", ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            $"recognize-weepa:{GetClientIp(ctx)}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 3,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
 });
 
 var app = builder.Build();

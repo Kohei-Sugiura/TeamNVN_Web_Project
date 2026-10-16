@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Weepa.Api.Models.Responses;
 using Weepa.Api.Services;
+using Weepa.Api.Validation;
 
 namespace Weepa.Api.Controllers;
 
@@ -71,7 +72,7 @@ public class ScoreRecognitionController : ControllerBase
         // ブラウザによっては content-type が "image/jpg" になることがある → 正規化
         var contentType = image.ContentType.Equals("image/jpg", StringComparison.OrdinalIgnoreCase)
             ? "image/jpeg" : image.ContentType;
-        if (!AllowedContentTypes.Contains(contentType))
+        if (!AllowedContentTypes.Contains(contentType) || !ImageSignature.IsAllowedImage(image))
         {
             return BadRequest(new ScoreRecognitionResponse
             {

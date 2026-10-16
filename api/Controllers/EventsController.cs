@@ -216,7 +216,6 @@ public class EventsController : ControllerBase
                 ROW_NUMBER() OVER (
                     ORDER BY b.score DESC, b.ex_score DESC NULLS LAST, d.reached_date ASC
                 )                   AS "Rank",
-                b.x_id              AS "XId",
                 l.submit_name       AS "SubmitName",
                 b.score             AS "Score",
                 b.ex_score          AS "ExScore",

@@ -62,7 +62,8 @@ public class ScoresController : ControllerBase
                 $"画像サイズが大きすぎます ({image.Length / 1024 / 1024} MB / 上限 20 MB)");
             return ValidationProblem(ModelState);
         }
-        if (!AllowedContentTypes.TryGetValue(image.ContentType, out var extension))
+        if (!AllowedContentTypes.TryGetValue(image.ContentType, out var extension)
+            || !ImageSignature.IsAllowedImage(image))
         {
             ModelState.AddModelError(nameof(request.Image),
                 "画像形式は JPEG / PNG / WebP のみ対応しています");

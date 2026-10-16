@@ -1,5 +1,6 @@
 const params = new URLSearchParams(window.location.search);
-const returnUrl = params.get('return') || '/admin/';
+const rawReturn = params.get('return') || '';
+const returnUrl = (rawReturn.startsWith('/') && !rawReturn.startsWith('//')) ? rawReturn : '/admin/';
 
 const form = document.getElementById('login-form');
 const userInput = document.getElementById('user');
